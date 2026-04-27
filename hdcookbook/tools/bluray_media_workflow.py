@@ -150,7 +150,7 @@ def main():
             state_file=logs_dir/(safe + '.state.json')
             selected_encoder = 'nvenc' if args.encoder == 'nvenc' or (args.encoder == 'auto' and nvidia_status().get('available')) else 'cpu'
             state={
-                'file': item['file'], 'started_at': time.time(), 'status': 'running', 'encoder': selected_encoder,
+                'file': item['file'], 'started_at': time.time(), 'status': 'running', 'encoder': selected_encoder, 'pid': None,
                 'duration_seconds': item.get('duration_seconds'),
                 'output': str(output_root/item['recommended_output']),
                 'progress_file': str(progress_file), 'log_file': str(log_file),
@@ -161,13 +161,16 @@ def main():
             print('+', ' '.join(shlex.quote(x) for x in cmd), flush=True)
             try:
                 with log_file.open('ab') as log:
-                    p=subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT)
+                    proc=subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT)
+                    state['pid']=proc.pid
+                    state_file.write_text(json.dumps(state, indent=2)+'\n')
+                    returncode=proc.wait()
                 state['finished_at']=time.time()
-                state['returncode']=p.returncode
-                state['status']='done' if p.returncode == 0 else 'failed'
+                state['returncode']=returncode
+                state['status']='done' if returncode == 0 else 'failed'
                 state_file.write_text(json.dumps(state, indent=2)+'\n')
-                if p.returncode != 0:
-                    raise subprocess.CalledProcessError(p.returncode, cmd)
+                if returncode != 0:
+                    raise subprocess.CalledProcessError(returncode, cmd)
             finally:
                 # ffmpeg writes progress=end on success; leave files behind for monitor/history.
                 pass

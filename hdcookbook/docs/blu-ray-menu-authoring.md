@@ -65,10 +65,13 @@ Launch a terminal dashboard for the project:
 The monitor shows:
 
 - ffmpeg/ffprobe/tsMuxer/xorriso availability
-- each video's pending/running/partial/done/failed status
+- NVIDIA/NVENC availability
+- each video's pending/running/smoke/partial/done/failed status
 - percent complete from ffmpeg progress files
 - encoded duration vs source duration
-- output size, fps, speed, bitrate, and output path
+- active encoder, output size, fps, speed, bitrate, and output path
+
+Run encoding in one terminal and the monitor in a second terminal. They cannot both control the same terminal at once.
 
 Controls:
 

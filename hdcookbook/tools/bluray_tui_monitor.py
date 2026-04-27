@@ -7,6 +7,7 @@ import json
 import shutil
 import subprocess
 import time
+import os
 from pathlib import Path
 
 
@@ -93,6 +94,13 @@ def tool_status(root: Path):
     }
 
 
+def pid_running(pid):
+    try:
+        return bool(pid) and Path(f'/proc/{int(pid)}').exists()
+    except Exception:
+        return False
+
+
 def collect(project: Path, root: Path):
     media_root = project / 'build' / 'bluray-media'
     manifest = read_json(media_root / 'media-manifest.json')
@@ -113,9 +121,18 @@ def collect(project: Path, root: Path):
         except Exception:
             out_time_ms = 0
         progress_seconds = out_time_ms / 1_000_000 if out_time_ms else None
-        encoded_duration = ffprobe_duration(out) if out.exists() else None
+        raw_status = state.get('status')
+        # Avoid probing a file that ffmpeg is actively writing; progress output is faster
+        # and avoids flaky reads of a growing transport stream.
+        encoded_duration = None if raw_status == 'running' else (ffprobe_duration(out) if out.exists() else None)
 
-        status = state.get('status')
+        status = raw_status
+        if status == 'running' and state.get('pid') and not pid_running(state.get('pid')):
+            status = 'stale'
+        if status == 'done' and state.get('smoke_seconds'):
+            status = 'smoke'
+        if status == 'done' and encoded_duration and duration and encoded_duration < duration - 2:
+            status = 'partial'
         if not status:
             if encoded_duration and duration and encoded_duration >= duration - 2:
                 status = 'done'
@@ -136,6 +153,8 @@ def collect(project: Path, root: Path):
             'progress_seconds': progress_seconds,
             'percent': percent,
             'status': status,
+            'pid': state.get('pid'),
+            'smoke_seconds': state.get('smoke_seconds'),
             'speed': prog.get('speed', ''),
             'encoder': state.get('encoder', ''),
             'fps': prog.get('fps', ''),
@@ -153,21 +172,36 @@ def bar(width: int, percent):
     return '[' + '#' * filled + '-' * (inner - filled) + ']'
 
 
+def safe_add(stdscr, y, x, text, width, attr=curses.A_NORMAL):
+    try:
+        if y < 0 or x < 0:
+            return
+        max_y, max_x = stdscr.getmaxyx()
+        if y >= max_y or x >= max_x:
+            return
+        stdscr.addnstr(y, x, str(text), max(0, min(width, max_x - x - 1)), attr)
+    except curses.error:
+        pass
+
+
 def draw(stdscr, project: Path, root: Path):
-    curses.curs_set(0)
+    try:
+        curses.curs_set(0)
+    except curses.error:
+        pass
     stdscr.nodelay(True)
     while True:
         rows, meta = collect(project, root)
         height, width = stdscr.getmaxyx()
         stdscr.erase()
         y = 0
-        stdscr.addnstr(y, 0, f'Blu-ray Project Monitor | {project}', width - 1, curses.A_BOLD)
+        safe_add(stdscr, y, 0, f'Blu-ray Project Monitor | {project}', width - 1, curses.A_BOLD)
         y += 1
-        stdscr.addnstr(y, 0, 'q quit | r refresh | run encode separately: ./scripts/prepare-bluray-media.sh "{}"'.format(project), width - 1)
+        safe_add(stdscr, y, 0, 'q quit | r refresh | run encode separately: ./scripts/prepare-bluray-media.sh "{}"'.format(project), width - 1)
         y += 2
 
         if not meta.get('manifest'):
-            stdscr.addnstr(y, 0, 'No media manifest yet. Run ./scripts/analyze-bluray-project.sh first.', width - 1, curses.A_BOLD)
+            safe_add(stdscr, y, 0, 'No media manifest yet. Run ./scripts/analyze-bluray-project.sh first.', width - 1, curses.A_BOLD)
             stdscr.refresh()
             key = stdscr.getch()
             if key in (ord('q'), ord('Q')):
@@ -178,14 +212,14 @@ def draw(stdscr, project: Path, root: Path):
         tools = meta.get('tools', {})
         gpu = tools.get('nvidia')
         simple_tools = {k:v for k,v in tools.items() if k != 'nvidia'}
-        stdscr.addnstr(y, 0, 'Tools: ' + '  '.join(f'{k}: {"ok" if v else "missing"}' for k, v in simple_tools.items()), width - 1)
+        safe_add(stdscr, y, 0, 'Tools: ' + '  '.join(f'{k}: {"ok" if v else "missing"}' for k, v in simple_tools.items()), width - 1)
         y += 1
-        stdscr.addnstr(y, 0, 'GPU: ' + (gpu or 'NVIDIA/NVENC unavailable'), width - 1)
+        safe_add(stdscr, y, 0, 'GPU: ' + (gpu or 'NVIDIA/NVENC unavailable'), width - 1)
         y += 2
 
         bar_width = max(18, min(34, width - 76))
         header = '{:<16} {:<9} {:>7} {:>10} {:>10} {:>8} {}'.format('File', 'Status', 'Pct', 'Encoded', 'Duration', 'Size', 'Progress')
-        stdscr.addnstr(y, 0, header, width - 1, curses.A_UNDERLINE)
+        safe_add(stdscr, y, 0, header, width - 1, curses.A_UNDERLINE)
         y += 1
 
         for row in rows:
@@ -204,14 +238,14 @@ def draw(stdscr, project: Path, root: Path):
                 attr = curses.A_BOLD
             elif row['status'] in ('running', 'done'):
                 attr = curses.A_BOLD
-            stdscr.addnstr(y, 0, line, width - 1, attr)
+            safe_add(stdscr, y, 0, line, width - 1, attr)
             y += 1
             detail = '    enc={} fps={} speed={} bitrate={} output={}'.format(row.get('encoder') or '-', row['fps'] or '-', row['speed'] or '-', row['bitrate'] or '-', row['output'])
-            stdscr.addnstr(y, 0, detail, width - 1)
+            safe_add(stdscr, y, 0, detail, width - 1)
             y += 1
 
         y = height - 2
-        stdscr.addnstr(y, 0, f'Updated {time.strftime("%H:%M:%S")}', width - 1)
+        safe_add(stdscr, y, 0, f'Updated {time.strftime("%H:%M:%S")}', width - 1)
         stdscr.refresh()
         for _ in range(10):
             key = stdscr.getch()
