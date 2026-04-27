@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import argparse, json, shlex, subprocess, sys
+import argparse, json, os, shlex, subprocess, sys, time
 from pathlib import Path
 
 VIDEO_EXTS={'.mkv','.mp4','.m2ts','.mov'}
@@ -56,7 +56,7 @@ def discover(project: Path):
     return {'project_dir':str(project), 'videos':items, 'subtitle_files':[p.name for p in subs]}
 
 
-def ffmpeg_cmd(project: Path, item: dict, output_root: Path, seconds: int|None=None, burn_subtitle: str|None=None):
+def ffmpeg_cmd(project: Path, item: dict, output_root: Path, seconds: int|None=None, burn_subtitle: str|None=None, progress_file: Path|None=None):
     src=project/item['file']
     out=output_root/item['recommended_output']
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -66,6 +66,9 @@ def ffmpeg_cmd(project: Path, item: dict, output_root: Path, seconds: int|None=N
         sub=str(project/burn_subtitle).replace("'", "\\'")
         vf += f",subtitles='{sub}'"
     cmd=['ffmpeg','-hide_banner','-y']
+    if progress_file:
+        progress_file.parent.mkdir(parents=True, exist_ok=True)
+        cmd += ['-progress', str(progress_file), '-nostats']
     if seconds:
         cmd += ['-t', str(seconds)]
     cmd += ['-i', str(src), '-map','0:v:0','-map','0:a:0',
@@ -113,9 +116,34 @@ def main():
             burn=None
             if args.burn_first_subtitle and item['sidecar_subtitles']:
                 burn=item['sidecar_subtitles'][0]['file']
-            cmd=ffmpeg_cmd(project, item, output_root, args.smoke_seconds, burn)
+            logs_dir=output_root/'logs'
+            logs_dir.mkdir(parents=True, exist_ok=True)
+            safe=item['file'].replace('/', '_')
+            progress_file=logs_dir/(safe + '.progress')
+            log_file=logs_dir/(safe + '.ffmpeg.log')
+            state_file=logs_dir/(safe + '.state.json')
+            state={
+                'file': item['file'], 'started_at': time.time(), 'status': 'running',
+                'duration_seconds': item.get('duration_seconds'),
+                'output': str(output_root/item['recommended_output']),
+                'progress_file': str(progress_file), 'log_file': str(log_file),
+                'smoke_seconds': args.smoke_seconds,
+            }
+            state_file.write_text(json.dumps(state, indent=2)+'\n')
+            cmd=ffmpeg_cmd(project, item, output_root, args.smoke_seconds, burn, progress_file)
             print('+', ' '.join(shlex.quote(x) for x in cmd), flush=True)
-            subprocess.run(cmd, check=True)
+            try:
+                with log_file.open('ab') as log:
+                    p=subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT)
+                state['finished_at']=time.time()
+                state['returncode']=p.returncode
+                state['status']='done' if p.returncode == 0 else 'failed'
+                state_file.write_text(json.dumps(state, indent=2)+'\n')
+                if p.returncode != 0:
+                    raise subprocess.CalledProcessError(p.returncode, cmd)
+            finally:
+                # ffmpeg writes progress=end on success; leave files behind for monitor/history.
+                pass
     print(json.dumps(manifest, indent=2))
 
 if __name__=='__main__':

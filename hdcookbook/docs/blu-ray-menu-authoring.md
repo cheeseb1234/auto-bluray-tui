@@ -21,6 +21,41 @@ Verified on Manjaro/Arch with `jdk8-openjdk` + `ant` installed. The build emits 
 
 The upstream sample needs the static video/disc-image base from the archived release mentioned by the Ant build. The zip produced here contains the Java/BD-J overlay that is unzipped over that base BDMV directory.
 
+## TUI progress monitor
+
+Launch a terminal dashboard for the project:
+
+```bash
+./scripts/monitor-bluray-project.sh "/home/corey/.openclaw/Bluray project"
+```
+
+The monitor shows:
+
+- ffmpeg/ffprobe/tsMuxer/xorriso availability
+- each video's pending/running/partial/done/failed status
+- percent complete from ffmpeg progress files
+- encoded duration vs source duration
+- output size, fps, speed, bitrate, and output path
+
+Controls:
+
+- `q` quit
+- `r` refresh immediately
+
+For a noninteractive snapshot:
+
+```bash
+./tools/bluray_tui_monitor.py "/home/corey/.openclaw/Bluray project" --once
+```
+
+Encoder runs now write progress/state/log files under:
+
+```text
+/home/corey/.openclaw/Bluray project/build/bluray-media/logs/
+```
+
+`xorriso` is available after installing `libisoburn`, so ISO creation is unblocked once the BDMV tree exists.
+
 ## Authoring handoff: playlist map and mux plan
 
 After converting the PowerPoint menu and analyzing media, generate the current Blu-ray authoring handoff plan:
