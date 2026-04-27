@@ -100,6 +100,27 @@ Tooling status on this machine:
 
 For final selectable Blu-ray subtitles, SRT must become PGS/SUP or be burned into video. This workflow preserves subtitle mapping now; mux/authoring integration comes next.
 
+### tsMuxer local install
+
+Fetch the official Linux tsMuxer release locally into `tools/bin/`:
+
+```bash
+./scripts/get-tsmuxer.sh
+```
+
+The script downloads `tsMuxer-2.7.0-linux.zip` from `justdan96/tsMuxer`, extracts `tsMuxeR`, and installs it as:
+
+```text
+tools/bin/tsMuxer
+```
+
+This path is intentionally gitignored so the repository does not commit third-party binaries. `create-bluray-authoring-plan.sh` checks this local binary before checking system `PATH`.
+
+Verified locally with the 5-second `Video 2.m2ts` smoke encode; tsMuxer detects:
+
+- H.264 High@4.1, 1920x1080p, 23.976 fps
+- AC-3 640 kbps, 48 kHz
+
 ## PowerPoint-first workflow
 
 For non-technical menu authoring, use a normal `.pptx` file as the menu source.

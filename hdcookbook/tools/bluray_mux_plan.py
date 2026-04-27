@@ -6,6 +6,16 @@ from pathlib import Path
 
 
 def which(name):
+    root=Path(__file__).resolve().parents[1]
+    local = root / 'tools' / 'bin' / name
+    if local.exists():
+        return str(local)
+    # The upstream Linux binary is commonly named tsMuxeR, while our wrapper
+    # normalizes it to tsMuxer.
+    if name == 'tsMuxer':
+        local_alt = root / 'tools' / 'bin' / 'tsMuxeR'
+        if local_alt.exists():
+            return str(local_alt)
     return shutil.which(name)
 
 
@@ -64,7 +74,7 @@ A_AC3, "{encoded}", lang=eng
     tool_status={
         'ffmpeg': which('ffmpeg'),
         'ffprobe': which('ffprobe'),
-        'tsMuxer': which('tsMuxer') or which('tsmuxer'),
+        'tsMuxer': which('tsMuxer') or which('tsMuxeR') or which('tsmuxer'),
         'xorriso': which('xorriso'),
         'mkisofs': which('mkisofs') or which('genisoimage'),
         'bdsup2sub': which('bdsup2sub'),

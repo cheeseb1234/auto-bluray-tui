@@ -2,3 +2,7 @@ bin
 lib/stubes
 xlets/hdcookbook_discimage/HDCookbookDiscImage.zip
 hdcookbook_binaries.zip
+
+# Local third-party tool downloads
+/tools/bin/
+/tools/downloads/
