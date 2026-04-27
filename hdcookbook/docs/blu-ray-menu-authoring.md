@@ -21,6 +21,52 @@ Verified on Manjaro/Arch with `jdk8-openjdk` + `ant` installed. The build emits 
 
 The upstream sample needs the static video/disc-image base from the archived release mentioned by the Ant build. The zip produced here contains the Java/BD-J overlay that is unzipped over that base BDMV directory.
 
+## Media preparation with ffmpeg
+
+The PowerPoint conversion handles menu pages and button regions. The next workflow prepares the linked videos for Blu-ray-style playback.
+
+Analyze the project folder and write a manifest/ffmpeg plan:
+
+```bash
+./scripts/analyze-bluray-project.sh "/home/corey/.openclaw/Bluray project"
+```
+
+Outputs:
+
+```text
+/home/corey/.openclaw/Bluray project/build/bluray-media/media-manifest.json
+/home/corey/.openclaw/Bluray project/build/bluray-media/ffmpeg-plan.md
+```
+
+Prepare video streams:
+
+```bash
+./scripts/prepare-bluray-media.sh "/home/corey/.openclaw/Bluray project"
+```
+
+Smoke-test one file without doing a full multi-hour encode:
+
+```bash
+./scripts/prepare-bluray-media.sh "/home/corey/.openclaw/Bluray project" --only "Video 2" --smoke-seconds 5
+```
+
+The encoder normalizes video to 1920x1080 H.264 + AC-3 in `.m2ts` containers:
+
+- scales/pads wide sources to 16:9 1080p
+- keeps 23.976 fps
+- uses `libx264` with Blu-ray compatibility flags
+- converts audio to 48 kHz AC-3
+- records sidecar `.srt` subtitle mapping in the manifest
+
+Smoke test verified: `Video 2` produced a valid 5-second `encoded/Video 2.m2ts`.
+
+Tooling status on this machine:
+
+- available: `ffmpeg`, `ffprobe`, `java`, `ant`, `libreoffice`, `pdftoppm`
+- missing: `tsMuxer`, `xorriso`/`mkisofs`, `mediainfo`, `bdsup2sub`
+
+For final selectable Blu-ray subtitles, SRT must become PGS/SUP or be burned into video. This workflow preserves subtitle mapping now; mux/authoring integration comes next.
+
 ## PowerPoint-first workflow
 
 For non-technical menu authoring, use a normal `.pptx` file as the menu source.
