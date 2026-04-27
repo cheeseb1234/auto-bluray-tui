@@ -21,6 +21,39 @@ Verified on Manjaro/Arch with `jdk8-openjdk` + `ant` installed. The build emits 
 
 The upstream sample needs the static video/disc-image base from the archived release mentioned by the Ant build. The zip produced here contains the Java/BD-J overlay that is unzipped over that base BDMV directory.
 
+## Authoring handoff: playlist map and mux plan
+
+After converting the PowerPoint menu and analyzing media, generate the current Blu-ray authoring handoff plan:
+
+```bash
+./scripts/create-bluray-authoring-plan.sh "/home/corey/.openclaw/Bluray project"
+```
+
+Outputs:
+
+```text
+/home/corey/.openclaw/Bluray project/build/bluray-authoring/playlist-map.json
+/home/corey/.openclaw/Bluray project/build/bluray-authoring/mux-plan.md
+/home/corey/.openclaw/Bluray project/build/bluray-authoring/tsmuxer-meta/*.meta
+```
+
+This assigns stable IDs for the menu buttons:
+
+- `Video 1` → playlist/title `00001`
+- `Video 2` → playlist/title `00002`
+- `Video 3` → playlist/title `00003`
+- `Video 4` → playlist/title `00004`
+
+The PowerPoint-generated GRIN now includes a generated Java hook:
+
+```java
+playVideo(videoFile, playlistId)
+```
+
+In GRINView it logs `PPTX_MENU_PLAY ...`. In the final BD-J Xlet, this is the clean replacement point for real playlist/title navigation.
+
+The mux plan checks whether encoded `.m2ts` files are full-length or only smoke-test clips. The current `Video 2.m2ts` is intentionally detected as partial because it was a 5-second smoke test.
+
 ## Media preparation with ffmpeg
 
 The PowerPoint conversion handles menu pages and button regions. The next workflow prepares the linked videos for Blu-ray-style playback.

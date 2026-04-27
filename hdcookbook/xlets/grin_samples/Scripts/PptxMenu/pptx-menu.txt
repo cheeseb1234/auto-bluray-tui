@@ -1,6 +1,18 @@
 # Generated from PowerPoint by tools/pptx_menu_converter.py
 show
 
+java_generated_class PptxMenuCommands [[
+    import com.hdcookbook.grin.Show;
+    import com.hdcookbook.grin.util.Debug;
+    public class PptxMenuCommands extends com.hdcookbook.grin.GrinXHelper {
+        public PptxMenuCommands(Show show) { super(show); }
+        public void playVideo(String videoFile, String playlistId) {
+            Debug.println("PPTX_MENU_PLAY video=" + videoFile + " playlist=" + playlistId);
+        }
+        JAVA_COMMAND_BODY
+    }
+]]
+
 segment S:Initialize
     setup {
         F:slide1.BG
@@ -111,8 +123,8 @@ rc_handler visual R:slide2
         Main_Menu Main_Menu_selected
     }
     activate {
-        Video_1 Video_1_activated { activate_segment S:slide2 ; }
-        Video_2 Video_2_activated { activate_segment S:slide2 ; }
+        Video_1 Video_1_activated { java_command [[ playVideo("Video 1.mkv", "00001"); ]] activate_segment S:slide2 ; }
+        Video_2 Video_2_activated { java_command [[ playVideo("Video 2.mp4", "00002"); ]] activate_segment S:slide2 ; }
         Main_Menu Main_Menu_activated { activate_segment S:slide1 ; }
     }
     mouse {
@@ -141,8 +153,8 @@ rc_handler visual R:slide3
         Main_Menu Main_Menu_selected
     }
     activate {
-        Video_3 Video_3_activated { activate_segment S:slide3 ; }
-        Video_4 Video_4_activated { activate_segment S:slide3 ; }
+        Video_3 Video_3_activated { java_command [[ playVideo("Video 3.mkv", "00003"); ]] activate_segment S:slide3 ; }
+        Video_4 Video_4_activated { java_command [[ playVideo("Video 4.mp4", "00004"); ]] activate_segment S:slide3 ; }
         Main_Menu Main_Menu_activated { activate_segment S:slide1 ; }
     }
     mouse {

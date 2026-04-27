@@ -74,6 +74,33 @@ def extract_slide_model(pptx: Path, project_dir: Path):
     return {'source': str(pptx), 'slides': slides, 'source_size_emu':[src_w,src_h], 'videos': videos, 'subtitles': subtitles}
 
 
+def assign_video_actions(model):
+    video_buttons=[]
+    seen={}
+    next_playlist=1
+    for slide in model['slides']:
+        for btn in slide['buttons']:
+            act=btn['action']
+            if act['kind'] != 'video':
+                continue
+            target=act['target']
+            if target not in seen:
+                seen[target]={
+                    'video_file': target,
+                    'playlist_id': f'{next_playlist:05d}',
+                    'title_number': next_playlist,
+                    'encoded_m2ts': f'build/bluray-media/encoded/{Path(target).stem}.m2ts'
+                }
+                next_playlist += 1
+            act.update(seen[target])
+            video_buttons.append({
+                'slide': slide['id'],
+                'button': btn['label'],
+                **seen[target]
+            })
+    model['video_actions']=video_buttons
+
+
 def export_slide_pngs(pptx: Path, out_assets: Path, target=(1280,720)):
     out_assets.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as td:
@@ -112,6 +139,20 @@ def draw_overlays(model, assets: Path, target=(1280,720)):
 
 def generate_show(model, out: Path):
     lines=['# Generated from PowerPoint by tools/pptx_menu_converter.py','show','']
+    lines += [
+        'java_generated_class PptxMenuCommands [[',
+        '    import com.hdcookbook.grin.Show;',
+        '    import com.hdcookbook.grin.util.Debug;',
+        '    public class PptxMenuCommands extends com.hdcookbook.grin.GrinXHelper {',
+        '        public PptxMenuCommands(Show show) { super(show); }',
+        '        public void playVideo(String videoFile, String playlistId) {',
+        '            Debug.println("PPTX_MENU_PLAY video=" + videoFile + " playlist=" + playlistId);',
+        '        }',
+        '        JAVA_COMMAND_BODY',
+        '    }',
+        ']]',
+        ''
+    ]
     first=model['slides'][0]['id']
     lines += [
         'segment S:Initialize',
@@ -148,8 +189,9 @@ def generate_show(model, out: Path):
             if act['kind']=='slide':
                 lines.append(f"        {bid} {bid}_activated {{ activate_segment S:{act['target']} ; }}")
             else:
-                # Placeholder: BD-J playlist wiring happens later; preview shows activation feedback.
-                lines.append(f"        {bid} {bid}_activated {{ activate_segment S:{sid} ; }}")
+                video=act['target'].replace('\\', '\\\\').replace('"', '\"')
+                playlist=act.get('playlist_id', '00000')
+                lines.append(f"        {bid} {bid}_activated {{ java_command [[ playVideo(\"{video}\", \"{playlist}\"); ]] activate_segment S:{sid} ; }}")
         lines += ['    }','    mouse {']
         for btn in buttons:
             r=btn['rect_px']; lines.append(f"        {btn['id']} ( {r['x']} {r['y']} {r['x']+r['w']} {r['y']+r['h']} )")
@@ -162,6 +204,7 @@ def write_build_files(out: Path, model):
     (out/'build.properties').write_text('''build.dir=build
 xlet.jar=${build.dir}/00000.jar
 script.name=pptx-menu
+generated.class=PptxMenuCommands.java
 top.dir=../../../..
 
 bin.dir=${top.dir}/bin
@@ -206,7 +249,7 @@ ant preview
 
 {json.dumps([{'slide':s['id'],'button':b['label'],'action':b['action']} for s in model['slides'] for b in s['buttons'] if b['action']['kind']=='video'], indent=2)}
 
-These currently preview as button activation feedback. The next step is mapping each video action to Blu-ray playlists/titles.
+These preview as button activation feedback and emit `PPTX_MENU_PLAY` lines through a generated `playVideo(videoFile, playlistId)` hook. The next step is replacing that hook with real BD-J playlist/title playback.
 ''')
 
 
@@ -219,11 +262,13 @@ def main():
     if out.exists(): shutil.rmtree(out)
     (out/'assets').mkdir(parents=True)
     model=extract_slide_model(pptx, project_dir)
+    assign_video_actions(model)
     export_slide_pngs(pptx, out/'assets')
     draw_overlays(model, out/'assets')
     generate_show(model, out)
     write_build_files(out, model)
     (out/'menu-model.json').write_text(json.dumps(model, indent=2)+'\n')
+    (out/'video-actions.json').write_text(json.dumps(model.get('video_actions', []), indent=2)+'\n')
     print(f'Generated {out}')
     print(f"Slides: {len(model['slides'])}; buttons: {sum(len(s['buttons']) for s in model['slides'])}")
 

@@ -73,7 +73,11 @@
           },
           "action": {
             "kind": "video",
-            "target": "Video 1.mkv"
+            "target": "Video 1.mkv",
+            "video_file": "Video 1.mkv",
+            "playlist_id": "00001",
+            "title_number": 1,
+            "encoded_m2ts": "build/bluray-media/encoded/Video 1.m2ts"
           },
           "rect_px": {
             "x": 116,
@@ -93,7 +97,11 @@
           },
           "action": {
             "kind": "video",
-            "target": "Video 2.mp4"
+            "target": "Video 2.mp4",
+            "video_file": "Video 2.mp4",
+            "playlist_id": "00002",
+            "title_number": 2,
+            "encoded_m2ts": "build/bluray-media/encoded/Video 2.m2ts"
           },
           "rect_px": {
             "x": 871,
@@ -146,7 +154,11 @@
           },
           "action": {
             "kind": "video",
-            "target": "Video 3.mkv"
+            "target": "Video 3.mkv",
+            "video_file": "Video 3.mkv",
+            "playlist_id": "00003",
+            "title_number": 3,
+            "encoded_m2ts": "build/bluray-media/encoded/Video 3.m2ts"
           },
           "rect_px": {
             "x": 813,
@@ -166,7 +178,11 @@
           },
           "action": {
             "kind": "video",
-            "target": "Video 4.mp4"
+            "target": "Video 4.mp4",
+            "video_file": "Video 4.mp4",
+            "playlist_id": "00004",
+            "title_number": 4,
+            "encoded_m2ts": "build/bluray-media/encoded/Video 4.m2ts"
           },
           "rect_px": {
             "x": 813,
@@ -214,5 +230,39 @@
     "Video 2.srt",
     "Video 1.srt",
     "Video 4 Spanish.srt"
+  ],
+  "video_actions": [
+    {
+      "slide": "slide2",
+      "button": "Video 1",
+      "video_file": "Video 1.mkv",
+      "playlist_id": "00001",
+      "title_number": 1,
+      "encoded_m2ts": "build/bluray-media/encoded/Video 1.m2ts"
+    },
+    {
+      "slide": "slide2",
+      "button": "Video 2",
+      "video_file": "Video 2.mp4",
+      "playlist_id": "00002",
+      "title_number": 2,
+      "encoded_m2ts": "build/bluray-media/encoded/Video 2.m2ts"
+    },
+    {
+      "slide": "slide3",
+      "button": "Video 3",
+      "video_file": "Video 3.mkv",
+      "playlist_id": "00003",
+      "title_number": 3,
+      "encoded_m2ts": "build/bluray-media/encoded/Video 3.m2ts"
+    },
+    {
+      "slide": "slide3",
+      "button": "Video 4",
+      "video_file": "Video 4.mp4",
+      "playlist_id": "00004",
+      "title_number": 4,
+      "encoded_m2ts": "build/bluray-media/encoded/Video 4.m2ts"
+    }
   ]
 }

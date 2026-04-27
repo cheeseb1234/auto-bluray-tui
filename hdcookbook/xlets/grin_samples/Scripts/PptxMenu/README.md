@@ -27,7 +27,11 @@ ant preview
     "button": "Video 1",
     "action": {
       "kind": "video",
-      "target": "Video 1.mkv"
+      "target": "Video 1.mkv",
+      "video_file": "Video 1.mkv",
+      "playlist_id": "00001",
+      "title_number": 1,
+      "encoded_m2ts": "build/bluray-media/encoded/Video 1.m2ts"
     }
   },
   {
@@ -35,7 +39,11 @@ ant preview
     "button": "Video 2",
     "action": {
       "kind": "video",
-      "target": "Video 2.mp4"
+      "target": "Video 2.mp4",
+      "video_file": "Video 2.mp4",
+      "playlist_id": "00002",
+      "title_number": 2,
+      "encoded_m2ts": "build/bluray-media/encoded/Video 2.m2ts"
     }
   },
   {
@@ -43,7 +51,11 @@ ant preview
     "button": "Video 3",
     "action": {
       "kind": "video",
-      "target": "Video 3.mkv"
+      "target": "Video 3.mkv",
+      "video_file": "Video 3.mkv",
+      "playlist_id": "00003",
+      "title_number": 3,
+      "encoded_m2ts": "build/bluray-media/encoded/Video 3.m2ts"
     }
   },
   {
@@ -51,9 +63,13 @@ ant preview
     "button": "Video 4",
     "action": {
       "kind": "video",
-      "target": "Video 4.mp4"
+      "target": "Video 4.mp4",
+      "video_file": "Video 4.mp4",
+      "playlist_id": "00004",
+      "title_number": 4,
+      "encoded_m2ts": "build/bluray-media/encoded/Video 4.m2ts"
     }
   }
 ]
 
-These currently preview as button activation feedback. The next step is mapping each video action to Blu-ray playlists/titles.
+These preview as button activation feedback and emit `PPTX_MENU_PLAY` lines through a generated `playVideo(videoFile, playlistId)` hook. The next step is replacing that hook with real BD-J playlist/title playback.
