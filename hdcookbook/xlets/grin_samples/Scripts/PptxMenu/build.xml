@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="PptxMenu sample" default="default" basedir=".">
+    <property file="build.properties"/>
+    <import file="../../GrinDriverXlet/build.xml"/>
+    <import file="../../GrinDriverXlet/generate-bdjo-desc.xml"/>
+    <target name="default" depends="copy-xlet, all"/>
+    <target name="preview" depends="run-grinview"/>
+    <target name="autotest" depends="autotest-grinview"/>
+</project>

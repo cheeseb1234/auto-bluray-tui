@@ -1,0 +1,155 @@
+# Generated from PowerPoint by tools/pptx_menu_converter.py
+show
+
+segment S:Initialize
+    setup {
+        F:slide1.BG
+    } setup_done {
+        activate_segment S:slide1 ;
+    }
+;
+
+segment S:slide1
+    active {
+        F:slide1.BG
+        F:slide1.Buttons
+    } setup {
+        F:slide1.BG
+        F:slide1.Buttons
+    } rc_handlers {
+        R:slide1
+    }
+;
+
+segment S:slide2
+    active {
+        F:slide2.BG
+        F:slide2.Buttons
+    } setup {
+        F:slide2.BG
+        F:slide2.Buttons
+    } rc_handlers {
+        R:slide2
+    }
+;
+
+segment S:slide3
+    active {
+        F:slide3.BG
+        F:slide3.Buttons
+    } setup {
+        F:slide3.BG
+        F:slide3.Buttons
+    } rc_handlers {
+        R:slide3
+    }
+;
+
+feature fixed_image F:slide1.BG 0 0 "assets/slide1_bg.png" ;
+feature fixed_image F:slide1.Extras.Selected 108 573 "assets/slide1_Extras_selected.png" ;
+feature fixed_image F:slide1.Extras.Activated 108 573 "assets/slide1_Extras_activated.png" ;
+feature fixed_image F:slide1.Main_Feature.Selected 863 573 "assets/slide1_Main_Feature_selected.png" ;
+feature fixed_image F:slide1.Main_Feature.Activated 863 573 "assets/slide1_Main_Feature_activated.png" ;
+
+feature fixed_image F:slide2.BG 0 0 "assets/slide2_bg.png" ;
+feature fixed_image F:slide2.Video_1.Selected 108 573 "assets/slide2_Video_1_selected.png" ;
+feature fixed_image F:slide2.Video_1.Activated 108 573 "assets/slide2_Video_1_activated.png" ;
+feature fixed_image F:slide2.Video_2.Selected 863 573 "assets/slide2_Video_2_selected.png" ;
+feature fixed_image F:slide2.Video_2.Activated 863 573 "assets/slide2_Video_2_activated.png" ;
+feature fixed_image F:slide2.Main_Menu.Selected 486 573 "assets/slide2_Main_Menu_selected.png" ;
+feature fixed_image F:slide2.Main_Menu.Activated 486 573 "assets/slide2_Main_Menu_activated.png" ;
+
+feature fixed_image F:slide3.BG 0 0 "assets/slide3_bg.png" ;
+feature fixed_image F:slide3.Video_3.Selected 805 137 "assets/slide3_Video_3_selected.png" ;
+feature fixed_image F:slide3.Video_3.Activated 805 137 "assets/slide3_Video_3_activated.png" ;
+feature fixed_image F:slide3.Video_4.Selected 805 427 "assets/slide3_Video_4_selected.png" ;
+feature fixed_image F:slide3.Video_4.Activated 805 427 "assets/slide3_Video_4_activated.png" ;
+feature fixed_image F:slide3.Main_Menu.Selected 485 573 "assets/slide3_Main_Menu_selected.png" ;
+feature fixed_image F:slide3.Main_Menu.Activated 485 573 "assets/slide3_Main_Menu_activated.png" ;
+
+feature assembly F:slide1.Buttons {
+    Extras_selected F:slide1.Extras.Selected
+    Extras_activated F:slide1.Extras.Activated
+    Main_Feature_selected F:slide1.Main_Feature.Selected
+    Main_Feature_activated F:slide1.Main_Feature.Activated
+} ;
+
+rc_handler visual R:slide1
+    grid { { Extras Main_Feature } }
+    assembly F:slide1.Buttons
+        start_selected true
+    select {
+        Extras Extras_selected
+        Main_Feature Main_Feature_selected
+    }
+    activate {
+        Extras Extras_activated { activate_segment S:slide2 ; }
+        Main_Feature Main_Feature_activated { activate_segment S:slide3 ; }
+    }
+    mouse {
+        Extras ( 116 581 435 668 )
+        Main_Feature ( 871 581 1190 668 )
+    }
+;
+
+feature assembly F:slide2.Buttons {
+    Video_1_selected F:slide2.Video_1.Selected
+    Video_1_activated F:slide2.Video_1.Activated
+    Video_2_selected F:slide2.Video_2.Selected
+    Video_2_activated F:slide2.Video_2.Activated
+    Main_Menu_selected F:slide2.Main_Menu.Selected
+    Main_Menu_activated F:slide2.Main_Menu.Activated
+} ;
+
+rc_handler visual R:slide2
+    grid { { Video_1 Video_2 Main_Menu } }
+    assembly F:slide2.Buttons
+        start_selected true
+    select {
+        Video_1 Video_1_selected
+        Video_2 Video_2_selected
+        Main_Menu Main_Menu_selected
+    }
+    activate {
+        Video_1 Video_1_activated { activate_segment S:slide2 ; }
+        Video_2 Video_2_activated { activate_segment S:slide2 ; }
+        Main_Menu Main_Menu_activated { activate_segment S:slide1 ; }
+    }
+    mouse {
+        Video_1 ( 116 581 435 668 )
+        Video_2 ( 871 581 1190 668 )
+        Main_Menu ( 494 581 813 668 )
+    }
+;
+
+feature assembly F:slide3.Buttons {
+    Video_3_selected F:slide3.Video_3.Selected
+    Video_3_activated F:slide3.Video_3.Activated
+    Video_4_selected F:slide3.Video_4.Selected
+    Video_4_activated F:slide3.Video_4.Activated
+    Main_Menu_selected F:slide3.Main_Menu.Selected
+    Main_Menu_activated F:slide3.Main_Menu.Activated
+} ;
+
+rc_handler visual R:slide3
+    grid { { Video_3 Video_4 Main_Menu } }
+    assembly F:slide3.Buttons
+        start_selected true
+    select {
+        Video_3 Video_3_selected
+        Video_4 Video_4_selected
+        Main_Menu Main_Menu_selected
+    }
+    activate {
+        Video_3 Video_3_activated { activate_segment S:slide3 ; }
+        Video_4 Video_4_activated { activate_segment S:slide3 ; }
+        Main_Menu Main_Menu_activated { activate_segment S:slide1 ; }
+    }
+    mouse {
+        Video_3 ( 813 145 1132 232 )
+        Video_4 ( 813 435 1132 522 )
+        Main_Menu ( 493 581 812 668 )
+    }
+;
+
+end_show

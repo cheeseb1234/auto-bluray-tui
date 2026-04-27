@@ -21,6 +21,43 @@ Verified on Manjaro/Arch with `jdk8-openjdk` + `ant` installed. The build emits 
 
 The upstream sample needs the static video/disc-image base from the archived release mentioned by the Ant build. The zip produced here contains the Java/BD-J overlay that is unzipped over that base BDMV directory.
 
+## PowerPoint-first workflow
+
+For non-technical menu authoring, use a normal `.pptx` file as the menu source.
+
+Current project source:
+
+```text
+/home/corey/.openclaw/Bluray project/menu.pptx
+```
+
+Convert it into a GRIN menu sample:
+
+```bash
+./scripts/convert-pptx-menu.sh "/home/corey/.openclaw/Bluray project"
+```
+
+Preview it:
+
+```bash
+./scripts/launch-pptx-menu-preview.sh
+```
+
+The converter currently reads:
+
+- PowerPoint slide backgrounds via LibreOffice/PDF export
+- PowerPoint hyperlink buttons for slide-to-slide navigation
+- `Video 1`, `Video 2`, etc. text buttons and maps them to matching video files in the project folder
+- `.srt` subtitle files in the project folder for later playlist/subtitle muxing
+
+Generated menu sample:
+
+```text
+xlets/grin_samples/Scripts/PptxMenu
+```
+
+Validated with `ant autotest`. Video buttons currently preview as activation feedback; the next integration layer maps those actions to actual Blu-ray playlists/titles.
+
 ## Second version: PowerPoint-style slide menu
 
 A separate slide-based menu sample is available at:

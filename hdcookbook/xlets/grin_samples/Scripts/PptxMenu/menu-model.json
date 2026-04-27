@@ -1,0 +1,218 @@
+{
+  "source": "/home/corey/.openclaw/Bluray project/menu.pptx",
+  "slides": [
+    {
+      "id": "slide1",
+      "title": "Title of the Film",
+      "texts": [
+        "Extras",
+        "Main Feature",
+        "Title of the Film"
+      ],
+      "buttons": [
+        {
+          "id": "Extras",
+          "label": "Extras",
+          "rect_emu": {
+            "x": 914400,
+            "y": 4572000,
+            "w": 2514600,
+            "h": 685800
+          },
+          "action": {
+            "kind": "slide",
+            "target": "slide2"
+          },
+          "rect_px": {
+            "x": 116,
+            "y": 581,
+            "w": 319,
+            "h": 87
+          }
+        },
+        {
+          "id": "Main_Feature",
+          "label": "Main Feature",
+          "rect_emu": {
+            "x": 6858000,
+            "y": 4572000,
+            "w": 2514600,
+            "h": 685800
+          },
+          "action": {
+            "kind": "slide",
+            "target": "slide3"
+          },
+          "rect_px": {
+            "x": 871,
+            "y": 581,
+            "w": 319,
+            "h": 87
+          }
+        }
+      ]
+    },
+    {
+      "id": "slide2",
+      "title": "Extras",
+      "texts": [
+        "Video 1",
+        "Video 2",
+        "Main Menu",
+        "Extras"
+      ],
+      "buttons": [
+        {
+          "id": "Video_1",
+          "label": "Video 1",
+          "rect_emu": {
+            "x": 915120,
+            "y": 4572360,
+            "w": 2514600,
+            "h": 685800
+          },
+          "action": {
+            "kind": "video",
+            "target": "Video 1.mkv"
+          },
+          "rect_px": {
+            "x": 116,
+            "y": 581,
+            "w": 319,
+            "h": 87
+          }
+        },
+        {
+          "id": "Video_2",
+          "label": "Video 2",
+          "rect_emu": {
+            "x": 6858720,
+            "y": 4572360,
+            "w": 2514600,
+            "h": 685800
+          },
+          "action": {
+            "kind": "video",
+            "target": "Video 2.mp4"
+          },
+          "rect_px": {
+            "x": 871,
+            "y": 581,
+            "w": 319,
+            "h": 87
+          }
+        },
+        {
+          "id": "Main_Menu",
+          "label": "Main Menu",
+          "rect_emu": {
+            "x": 3886560,
+            "y": 4572000,
+            "w": 2514600,
+            "h": 685800
+          },
+          "action": {
+            "kind": "slide",
+            "target": "slide1"
+          },
+          "rect_px": {
+            "x": 494,
+            "y": 581,
+            "w": 319,
+            "h": 87
+          }
+        }
+      ]
+    },
+    {
+      "id": "slide3",
+      "title": "Main Feature",
+      "texts": [
+        "Video 3",
+        "Video 4",
+        "Main Menu",
+        "Main Feature",
+        "This film is about a pug. The pug is magical. There are many clips of the pug. Because we love him. He IS magic. Respect his power. Love you pug wizard!"
+      ],
+      "buttons": [
+        {
+          "id": "Video_3",
+          "label": "Video 3",
+          "rect_emu": {
+            "x": 6400800,
+            "y": 1143000,
+            "w": 2514600,
+            "h": 685800
+          },
+          "action": {
+            "kind": "video",
+            "target": "Video 3.mkv"
+          },
+          "rect_px": {
+            "x": 813,
+            "y": 145,
+            "w": 319,
+            "h": 87
+          }
+        },
+        {
+          "id": "Video_4",
+          "label": "Video 4",
+          "rect_emu": {
+            "x": 6400800,
+            "y": 3429000,
+            "w": 2514600,
+            "h": 685800
+          },
+          "action": {
+            "kind": "video",
+            "target": "Video 4.mp4"
+          },
+          "rect_px": {
+            "x": 813,
+            "y": 435,
+            "w": 319,
+            "h": 87
+          }
+        },
+        {
+          "id": "Main_Menu",
+          "label": "Main Menu",
+          "rect_emu": {
+            "x": 3886200,
+            "y": 4572000,
+            "w": 2514600,
+            "h": 685800
+          },
+          "action": {
+            "kind": "slide",
+            "target": "slide1"
+          },
+          "rect_px": {
+            "x": 493,
+            "y": 581,
+            "w": 319,
+            "h": 87
+          }
+        }
+      ]
+    }
+  ],
+  "source_size_emu": [
+    10080625,
+    5670550
+  ],
+  "videos": {
+    "video 3": "Video 3.mkv",
+    "video 1": "Video 1.mkv",
+    "video 4": "Video 4.mp4",
+    "video 2": "Video 2.mp4"
+  },
+  "subtitles": [
+    "Video 4.srt",
+    "Video 3.srt",
+    "Video 2.srt",
+    "Video 1.srt",
+    "Video 4 Spanish.srt"
+  ]
+}
