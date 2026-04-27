@@ -21,6 +21,36 @@ Verified on Manjaro/Arch with `jdk8-openjdk` + `ant` installed. The build emits 
 
 The upstream sample needs the static video/disc-image base from the archived release mentioned by the Ant build. The zip produced here contains the Java/BD-J overlay that is unzipped over that base BDMV directory.
 
+## Second version: PowerPoint-style slide menu
+
+A separate slide-based menu sample is available at:
+
+```text
+xlets/grin_samples/Scripts/SlidesMenu
+```
+
+This keeps the original HD Cookbook disc-image sample untouched. The slide menu is generated from `slides.json`:
+
+- each slide is a menu page
+- slides have titles, subtitles, body text, custom background colors, and accent colors
+- buttons have labels, targets, and screen rectangles
+- the generator emits GRIN `slides-menu.txt` plus PNG backgrounds/button focus overlays
+
+Preview it with:
+
+```bash
+./scripts/launch-slides-menu-preview.sh
+```
+
+Or from the sample directory:
+
+```bash
+cd xlets/grin_samples/Scripts/SlidesMenu
+ant preview
+```
+
+Validated with `ant autotest`; it builds `build/00000.jar` and passes GRINView automation. The template uses 1280x720 graphics by default to stay under old BD-J/GRIN image-memory limits while preserving 16:9 layout.
+
 ## Preview the menu GUI
 
 Launch the Swing-based GRINView previewer:
