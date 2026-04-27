@@ -21,6 +21,16 @@ Verified on Manjaro/Arch with `jdk8-openjdk` + `ant` installed. The build emits 
 
 The upstream sample needs the static video/disc-image base from the archived release mentioned by the Ant build. The zip produced here contains the Java/BD-J overlay that is unzipped over that base BDMV directory.
 
+## Preview the menu GUI
+
+Launch the Swing-based GRINView previewer:
+
+```bash
+./scripts/launch-menu-preview.sh
+```
+
+GRINView is not a full Blu-ray player emulator, but it is the fastest way to iterate on menu layout, focus movement, button states, and GRIN show scripting before burning or muxing a disc image.
+
 ## Where the interactive menu lives
 
 Main sample menu files:
