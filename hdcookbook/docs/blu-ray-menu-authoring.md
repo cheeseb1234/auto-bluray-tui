@@ -21,6 +21,39 @@ Verified on Manjaro/Arch with `jdk8-openjdk` + `ant` installed. The build emits 
 
 The upstream sample needs the static video/disc-image base from the archived release mentioned by the Ant build. The zip produced here contains the Java/BD-J overlay that is unzipped over that base BDMV directory.
 
+## NVIDIA GPU / NVENC acceleration
+
+The media workflow can use NVIDIA NVENC for much faster H.264 encoding.
+
+Check GPU/NVENC detection:
+
+```bash
+./tools/bluray_media_workflow.py "/home/corey/.openclaw/Bluray project" --gpu-status
+```
+
+On this machine it detects:
+
+```text
+NVIDIA GeForce RTX 4060 Laptop GPU, driver 590.48.01, 8188 MiB
+h264_nvenc: available
+hevc_nvenc: available
+```
+
+Encoding defaults to `--encoder auto`, which uses NVENC when available and CPU x264 otherwise. Explicit modes:
+
+```bash
+./scripts/prepare-bluray-media.sh "/home/corey/.openclaw/Bluray project" --encoder nvenc
+./scripts/prepare-bluray-media.sh "/home/corey/.openclaw/Bluray project" --encoder cpu
+```
+
+NVENC smoke test verified with `Video 2`:
+
+```bash
+./scripts/prepare-bluray-media.sh "/home/corey/.openclaw/Bluray project" --only "Video 2" --smoke-seconds 3 --encoder nvenc
+```
+
+Output was valid 1920x1080 H.264 + AC-3 `.m2ts`, and the state file recorded `encoder: nvenc`. The TUI monitor also shows the detected GPU and active encoder per file.
+
 ## TUI progress monitor
 
 Launch a terminal dashboard for the project:

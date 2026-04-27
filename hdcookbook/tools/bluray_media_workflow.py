@@ -56,7 +56,7 @@ def discover(project: Path):
     return {'project_dir':str(project), 'videos':items, 'subtitle_files':[p.name for p in subs]}
 
 
-def ffmpeg_cmd(project: Path, item: dict, output_root: Path, seconds: int|None=None, burn_subtitle: str|None=None, progress_file: Path|None=None):
+def ffmpeg_cmd(project: Path, item: dict, output_root: Path, seconds: int|None=None, burn_subtitle: str|None=None, progress_file: Path|None=None, encoder: str='cpu'):
     src=project/item['file']
     out=output_root/item['recommended_output']
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -71,20 +71,41 @@ def ffmpeg_cmd(project: Path, item: dict, output_root: Path, seconds: int|None=N
         cmd += ['-progress', str(progress_file), '-nostats']
     if seconds:
         cmd += ['-t', str(seconds)]
-    cmd += ['-i', str(src), '-map','0:v:0','-map','0:a:0',
-            '-vf', vf,
-            '-r','24000/1001',
+    cmd += ['-i', str(src), '-map','0:v:0','-map','0:a:0', '-vf', vf, '-r','24000/1001']
+    if encoder == 'nvenc':
+        cmd += [
+            '-c:v','h264_nvenc', '-preset','p5', '-tune','hq', '-rc','vbr',
+            '-cq','18', '-b:v','0', '-maxrate','40000k', '-bufsize','30000k',
+            '-profile:v','high', '-level:v','4.1', '-pix_fmt','yuv420p',
+            '-g','24', '-bf','3', '-spatial_aq','1', '-temporal_aq','1',
+        ]
+    else:
+        cmd += [
             '-c:v','libx264','-preset','slow','-crf','18','-profile:v','high','-level:v','4.1',
             '-pix_fmt','yuv420p','-x264-params','bluray-compat=1:vbv-maxrate=40000:vbv-bufsize=30000:keyint=24:min-keyint=1:slices=4',
-            '-c:a','ac3','-b:a','640k','-ar','48000',
-            '-mpegts_m2ts_mode','1', str(out)]
+        ]
+    cmd += ['-c:a','ac3','-b:a','640k','-ar','48000', '-mpegts_m2ts_mode','1', str(out)]
     return cmd
+
+
+def nvidia_status():
+    try:
+        smi=subprocess.run(['nvidia-smi','--query-gpu=name,driver_version,memory.total','--format=csv,noheader'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
+        enc=subprocess.run(['ffmpeg','-hide_banner','-encoders'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=10)
+        return {
+            'nvidia_smi': smi.stdout.strip() if smi.returncode == 0 else None,
+            'h264_nvenc': 'h264_nvenc' in enc.stdout,
+            'hevc_nvenc': 'hevc_nvenc' in enc.stdout,
+            'available': smi.returncode == 0 and 'h264_nvenc' in enc.stdout,
+        }
+    except Exception as e:
+        return {'available': False, 'error': str(e)}
 
 
 def write_plan(project: Path, manifest: dict, output_root: Path):
     lines=['# FFmpeg Blu-ray media preparation plan', '', 'This prepares Blu-ray-friendly 1920x1080 H.264 + AC-3 `.m2ts` files.', '', '```bash']
     for item in manifest['videos']:
-        cmd=ffmpeg_cmd(project, item, output_root)
+        cmd=ffmpeg_cmd(project, item, output_root, encoder='cpu')
         lines.append(' '.join(shlex.quote(x) for x in cmd))
     lines += ['```','', 'Subtitle note: Blu-ray selectable subtitles normally need PGS/SUP authoring. This workflow keeps `.srt` files mapped in the manifest for the next mux/authoring layer. For maximum compatibility today, burn subtitles into video when needed.']
     (output_root/'ffmpeg-plan.md').write_text('\n'.join(lines)+'\n')
@@ -100,7 +121,12 @@ def main():
     ap.add_argument('--smoke-seconds', type=int, default=None, help='encode only first N seconds')
     ap.add_argument('--only', default=None, help='only encode a video filename substring, e.g. "Video 1"')
     ap.add_argument('--burn-first-subtitle', action='store_true', help='burn first matching sidecar .srt into each encoded video')
+    ap.add_argument('--encoder', choices=['auto','cpu','nvenc'], default='auto', help='video encoder backend; auto uses NVIDIA NVENC when available')
+    ap.add_argument('--gpu-status', action='store_true', help='print NVIDIA/NVENC detection and exit')
     args=ap.parse_args()
+    if args.gpu_status:
+        print(json.dumps(nvidia_status(), indent=2))
+        return
     project=Path(args.project_dir).resolve()
     output_root=Path(args.output_root).resolve() if args.output_root else project/'build'/'bluray-media'
     output_root.mkdir(parents=True, exist_ok=True)
@@ -122,15 +148,16 @@ def main():
             progress_file=logs_dir/(safe + '.progress')
             log_file=logs_dir/(safe + '.ffmpeg.log')
             state_file=logs_dir/(safe + '.state.json')
+            selected_encoder = 'nvenc' if args.encoder == 'nvenc' or (args.encoder == 'auto' and nvidia_status().get('available')) else 'cpu'
             state={
-                'file': item['file'], 'started_at': time.time(), 'status': 'running',
+                'file': item['file'], 'started_at': time.time(), 'status': 'running', 'encoder': selected_encoder,
                 'duration_seconds': item.get('duration_seconds'),
                 'output': str(output_root/item['recommended_output']),
                 'progress_file': str(progress_file), 'log_file': str(log_file),
                 'smoke_seconds': args.smoke_seconds,
             }
             state_file.write_text(json.dumps(state, indent=2)+'\n')
-            cmd=ffmpeg_cmd(project, item, output_root, args.smoke_seconds, burn, progress_file)
+            cmd=ffmpeg_cmd(project, item, output_root, args.smoke_seconds, burn, progress_file, selected_encoder)
             print('+', ' '.join(shlex.quote(x) for x in cmd), flush=True)
             try:
                 with log_file.open('ab') as log:

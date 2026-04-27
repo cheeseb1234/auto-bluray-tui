@@ -66,6 +66,17 @@ def ffprobe_duration(path: Path):
     return None
 
 
+def nvidia_summary():
+    try:
+        smi = subprocess.run(['nvidia-smi','--query-gpu=name,driver_version,memory.total','--format=csv,noheader'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=3)
+        enc = subprocess.run(['ffmpeg','-hide_banner','-encoders'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=5)
+        if smi.returncode == 0 and 'h264_nvenc' in enc.stdout:
+            return smi.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
 def tool_status(root: Path):
     def find_tool(name: str):
         local = root / 'tools' / 'bin' / name
@@ -78,6 +89,7 @@ def tool_status(root: Path):
         'ffprobe': find_tool('ffprobe'),
         'tsMuxer': find_tool('tsMuxer') or find_tool('tsMuxeR') or find_tool('tsmuxer'),
         'xorriso': find_tool('xorriso'),
+        'nvidia': nvidia_summary(),
     }
 
 
@@ -125,6 +137,7 @@ def collect(project: Path, root: Path):
             'percent': percent,
             'status': status,
             'speed': prog.get('speed', ''),
+            'encoder': state.get('encoder', ''),
             'fps': prog.get('fps', ''),
             'bitrate': prog.get('bitrate', ''),
         })
@@ -163,7 +176,11 @@ def draw(stdscr, project: Path, root: Path):
             continue
 
         tools = meta.get('tools', {})
-        stdscr.addnstr(y, 0, 'Tools: ' + '  '.join(f'{k}: {"ok" if v else "missing"}' for k, v in tools.items()), width - 1)
+        gpu = tools.get('nvidia')
+        simple_tools = {k:v for k,v in tools.items() if k != 'nvidia'}
+        stdscr.addnstr(y, 0, 'Tools: ' + '  '.join(f'{k}: {"ok" if v else "missing"}' for k, v in simple_tools.items()), width - 1)
+        y += 1
+        stdscr.addnstr(y, 0, 'GPU: ' + (gpu or 'NVIDIA/NVENC unavailable'), width - 1)
         y += 2
 
         bar_width = max(18, min(34, width - 76))
@@ -189,7 +206,7 @@ def draw(stdscr, project: Path, root: Path):
                 attr = curses.A_BOLD
             stdscr.addnstr(y, 0, line, width - 1, attr)
             y += 1
-            detail = '    fps={} speed={} bitrate={} output={}'.format(row['fps'] or '-', row['speed'] or '-', row['bitrate'] or '-', row['output'])
+            detail = '    enc={} fps={} speed={} bitrate={} output={}'.format(row.get('encoder') or '-', row['fps'] or '-', row['speed'] or '-', row['bitrate'] or '-', row['output'])
             stdscr.addnstr(y, 0, detail, width - 1)
             y += 1
 
