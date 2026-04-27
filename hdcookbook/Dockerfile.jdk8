@@ -1,0 +1,11 @@
+# JDK 8 is required by HD Cook Book's legacy Ant build and BD-J tooling.
+# Build from the hdcookbook/ directory:
+#   docker build -f Dockerfile.jdk8 -t hdcookbook-jdk8 .
+FROM eclipse-temurin:8-jdk-jammy
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ant unzip zip ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /work/hdcookbook
+CMD ["ant", "hdcookbook-discimage"]

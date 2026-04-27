@@ -1,0 +1,4 @@
+# Copy this file to user.vars.properties if you need local overrides.
+# The archived repo includes BD-J stub classes under lib/stubs/.
+# The enhanced stubs are the best default for compiling the sample disc image.
+HDC_BDJ_PLATFORM_CLASSES=${basedir}/lib/stubs/enhanced/classes.zip

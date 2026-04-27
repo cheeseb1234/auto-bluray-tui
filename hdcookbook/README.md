@@ -7,6 +7,21 @@ of the contents, and see
 <a href="https://hdcookbook.jovial.com/">https://hdcookbook.jovial.com/</a>
 for an archive of the companion web site.
 
+## Quick start for interactive Blu-ray menu work
+
+The repository includes a sample BD-J/GRIN interactive menu under
+`xlets/hdcookbook_discimage/bookmenu`. To build the sample disc-image
+overlay from this directory:
+
+```bash
+./scripts/build-sample-disc.sh
+```
+
+The script uses local JDK 8 + Ant when available, or Docker as a fallback.
+See `docs/blu-ray-menu-authoring.md` for the practical authoring map: where
+the menu script lives, how the GRIN build flows, and which files to copy/edit
+for a custom interactive Blu-ray menu.
+
 The following worked on Ubuntu Linux 20.x, with the standard JDK 1.8
 installation selected:
 ```
