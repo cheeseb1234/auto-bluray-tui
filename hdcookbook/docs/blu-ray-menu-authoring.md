@@ -17,6 +17,8 @@ Expected output:
 - Tools and Xlets compile under `build/`
 - Sample disc overlay is zipped as `xlets/hdcookbook_discimage/HDCookbookDiscImage.zip`
 
+Verified on Manjaro/Arch with `jdk8-openjdk` + `ant` installed. The build emits old-signing warnings because the sample BD-J signing flow uses legacy SHA-1/1024-bit test certificates, but the sample overlay still builds successfully.
+
 The upstream sample needs the static video/disc-image base from the archived release mentioned by the Ant build. The zip produced here contains the Java/BD-J overlay that is unzipped over that base BDMV directory.
 
 ## Where the interactive menu lives
