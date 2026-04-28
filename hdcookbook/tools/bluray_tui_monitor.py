@@ -15,6 +15,7 @@ RESOLUTIONS = ['1920x1080', '1280x720']
 QUALITIES = [('high', 16), ('default', 18), ('smaller', 21)]
 NVENC_PRESETS = ['p4', 'p5', 'p6', 'p7']
 AUDIO_BITRATES = ['448k', '640k']
+DISC_PRESETS = ['bd25', 'quality']
 
 
 def human_time(sec):
@@ -53,7 +54,8 @@ def default_config():
         'resolution': '1920x1080',
         'quality': 'default',
         'nvenc_preset': 'p5',
-        'audio_bitrate': '640k',
+        'audio_bitrate': '448k',
+        'disc_preset': 'bd25',
         'only': '',
         'smoke_seconds': '',
     }
@@ -95,6 +97,7 @@ def build_encode_command(root: Path, project: Path, cfg: dict):
     cmd += ['--cq', q, '--crf', q]
     cmd += ['--nvenc-preset', cfg['nvenc_preset']]
     cmd += ['--audio-bitrate', cfg['audio_bitrate']]
+    cmd += ['--disc-preset', cfg.get('disc_preset', 'bd25')]
     if cfg.get('only'):
         cmd += ['--only', cfg['only']]
     if cfg.get('smoke_seconds'):
@@ -286,7 +289,7 @@ def draw(stdscr, project: Path, root: Path):
         y = 0
         safe_add(stdscr, y, 0, f'Blu-ray Project Monitor | {project}', width - 1, curses.A_BOLD)
         y += 1
-        safe_add(stdscr, y, 0, 'q quit | r refresh | ENTER start | e encoder | z resolution | l quality | p preset | a audio | o only | s smoke', width - 1)
+        safe_add(stdscr, y, 0, 'q quit | r refresh | ENTER start | d disc | e encoder | z resolution | l quality | p preset | a audio | o only | s smoke', width - 1)
         y += 2
 
         if not meta.get('manifest'):
@@ -309,7 +312,7 @@ def draw(stdscr, project: Path, root: Path):
         overall_text = f'{overall:5.1f}%' if overall is not None else '  ---%'
         safe_add(stdscr, y, 0, f'Overall: {overall_text}  {meta.get("done_count",0)}/{meta.get("total_count",0)} done  {bar(30, overall)}', width - 1, curses.A_BOLD)
         y += 1
-        safe_add(stdscr, y, 0, f'Options: encoder={cfg["encoder"]} resolution={cfg["resolution"]} quality={cfg["quality"]} nvenc_preset={cfg["nvenc_preset"]} audio={cfg["audio_bitrate"]} only={cfg.get("only") or "all"} smoke={cfg.get("smoke_seconds") or "off"}', width - 1)
+        safe_add(stdscr, y, 0, f'Options: disc={cfg.get("disc_preset","bd25")} encoder={cfg["encoder"]} resolution={cfg["resolution"]} quality={cfg["quality"]} nvenc_preset={cfg["nvenc_preset"]} audio={cfg["audio_bitrate"]} only={cfg.get("only") or "all"} smoke={cfg.get("smoke_seconds") or "off"}', width - 1)
         y += 1
         if message:
             safe_add(stdscr, y, 0, message, width - 1, curses.A_BOLD)
@@ -359,6 +362,11 @@ def draw(stdscr, project: Path, root: Path):
                 except Exception as e:
                     message = f'Failed to start encode: {e}'
                 break
+            if key in (ord('d'), ord('D')):
+                cfg['disc_preset'] = cycle(cfg.get('disc_preset','bd25'), DISC_PRESETS)
+                if cfg['disc_preset'] == 'bd25':
+                    cfg['audio_bitrate'] = '448k'
+                save_config(project, cfg); break
             if key in (ord('e'), ord('E')):
                 cfg['encoder'] = cycle(cfg['encoder'], ENCODERS)
                 save_config(project, cfg); break

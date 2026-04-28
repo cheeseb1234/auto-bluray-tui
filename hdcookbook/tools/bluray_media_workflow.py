@@ -56,7 +56,7 @@ def discover(project: Path):
     return {'project_dir':str(project), 'videos':items, 'subtitle_files':[p.name for p in subs]}
 
 
-def ffmpeg_cmd(project: Path, item: dict, output_root: Path, seconds: int|None=None, burn_subtitle: str|None=None, progress_file: Path|None=None, encoder: str='cpu', resolution: str='1920x1080', cq: int=18, crf: int=18, audio_bitrate: str='640k', nvenc_preset: str='p5', cpu_preset: str='slow'):
+def ffmpeg_cmd(project: Path, item: dict, output_root: Path, seconds: int|None=None, burn_subtitle: str|None=None, progress_file: Path|None=None, encoder: str='cpu', resolution: str='1920x1080', cq: int=18, crf: int=18, audio_bitrate: str='640k', nvenc_preset: str='p5', cpu_preset: str='slow', video_bitrate: str|None=None, maxrate: str='40000k', bufsize: str='30000k'):
     src=project/item['file']
     out=output_root/item['recommended_output']
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -79,14 +79,14 @@ def ffmpeg_cmd(project: Path, item: dict, output_root: Path, seconds: int|None=N
     if encoder == 'nvenc':
         cmd += [
             '-c:v','h264_nvenc', '-preset',str(nvenc_preset), '-tune','hq', '-rc','vbr',
-            '-cq',str(cq), '-b:v','0', '-maxrate','40000k', '-bufsize','30000k',
+            '-cq',str(cq), '-b:v',str(video_bitrate or '0'), '-maxrate',str(maxrate), '-bufsize',str(bufsize),
             '-profile:v','high', '-level:v','4.1', '-pix_fmt','yuv420p',
             '-g','24', '-bf','3', '-spatial_aq','1', '-temporal_aq','1',
         ]
     else:
         cmd += [
             '-c:v','libx264','-preset',str(cpu_preset),'-crf',str(crf),'-profile:v','high','-level:v','4.1',
-            '-pix_fmt','yuv420p','-x264-params','bluray-compat=1:vbv-maxrate=40000:vbv-bufsize=30000:keyint=24:min-keyint=1:slices=4',
+            '-pix_fmt','yuv420p','-b:v',str(video_bitrate or '0'),'-maxrate',str(maxrate),'-bufsize',str(bufsize),'-x264-params',f'bluray-compat=1:vbv-maxrate={str(maxrate).rstrip("k")}:vbv-bufsize={str(bufsize).rstrip("k")}:keyint=24:min-keyint=1:slices=4',
         ]
     cmd += ['-c:a','ac3','-b:a',str(audio_bitrate),'-ar','48000', '-mpegts_m2ts_mode','1', str(out)]
     return cmd
@@ -132,6 +132,10 @@ def main():
     ap.add_argument('--audio-bitrate', default='640k', help='AC-3 audio bitrate')
     ap.add_argument('--nvenc-preset', default='p5', help='NVENC preset, e.g. p4/p5/p6/p7')
     ap.add_argument('--cpu-preset', default='slow', help='x264 preset, e.g. medium/slow/veryslow')
+    ap.add_argument('--disc-preset', choices=['quality','bd25'], default='quality', help='quality keeps CRF/CQ behavior; bd25 targets single-layer BD-25 size')
+    ap.add_argument('--video-bitrate', default=None, help='average video bitrate, e.g. 6200k; overrides disc preset')
+    ap.add_argument('--maxrate', default='40000k', help='video VBV maxrate')
+    ap.add_argument('--bufsize', default='30000k', help='video VBV buffer size')
     ap.add_argument('--gpu-status', action='store_true', help='print NVIDIA/NVENC detection and exit')
     args=ap.parse_args()
     if args.gpu_status:
@@ -159,6 +163,16 @@ def main():
             log_file=logs_dir/(safe + '.ffmpeg.log')
             state_file=logs_dir/(safe + '.state.json')
             selected_encoder = 'nvenc' if args.encoder == 'nvenc' or (args.encoder == 'auto' and nvidia_status().get('available')) else 'cpu'
+            video_bitrate = args.video_bitrate
+            audio_bitrate = args.audio_bitrate
+            maxrate = args.maxrate
+            bufsize = args.bufsize
+            if args.disc_preset == 'bd25' and not video_bitrate:
+                # Project is ~7.87h. 6200k video + 448k AC3 leaves room for menu/filesystem overhead on BD-25.
+                video_bitrate = '6200k'
+                audio_bitrate = '448k'
+                maxrate = '12000k'
+                bufsize = '15000k'
             state={
                 'file': item['file'], 'started_at': time.time(), 'status': 'running', 'encoder': selected_encoder, 'pid': None,
                 'duration_seconds': item.get('duration_seconds'),
@@ -167,12 +181,14 @@ def main():
                 'smoke_seconds': args.smoke_seconds,
                 'options': {
                     'resolution': args.resolution, 'cq': args.cq, 'crf': args.crf,
-                    'audio_bitrate': args.audio_bitrate, 'nvenc_preset': args.nvenc_preset,
+                    'audio_bitrate': audio_bitrate, 'nvenc_preset': args.nvenc_preset,
+                    'disc_preset': args.disc_preset, 'video_bitrate': video_bitrate,
+                    'maxrate': maxrate, 'bufsize': bufsize,
                     'cpu_preset': args.cpu_preset,
                 },
             }
             state_file.write_text(json.dumps(state, indent=2)+'\n')
-            cmd=ffmpeg_cmd(project, item, output_root, args.smoke_seconds, burn, progress_file, selected_encoder, args.resolution, args.cq, args.crf, args.audio_bitrate, args.nvenc_preset, args.cpu_preset)
+            cmd=ffmpeg_cmd(project, item, output_root, args.smoke_seconds, burn, progress_file, selected_encoder, args.resolution, args.cq, args.crf, audio_bitrate, args.nvenc_preset, args.cpu_preset, video_bitrate, maxrate, bufsize)
             print('+', ' '.join(shlex.quote(x) for x in cmd), flush=True)
             try:
                 with log_file.open('ab') as log:

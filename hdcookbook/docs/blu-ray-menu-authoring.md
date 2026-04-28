@@ -108,6 +108,24 @@ Encoder runs now write progress/state/log files under:
 
 `xorriso` is available after installing `libisoburn`, so ISO creation is unblocked once the BDMV tree exists.
 
+## BD-25 size target
+
+The current full-quality NVENC encodes are about 44.4 GiB total, so they require BD-50. For BD-25, re-encode with the BD-25 preset.
+
+Project duration is about 7.87 hours. To fit single-layer BD-25 with filesystem/menu overhead, the workflow uses approximately:
+
+- video average bitrate: `6200k`
+- AC-3 audio: `448k`
+- video VBV maxrate/buffer: `12000k` / `15000k`
+
+Run from the TUI and set `disc=bd25`, or from the CLI:
+
+```bash
+./scripts/prepare-bluray-media.sh "/home/corey/.openclaw/Bluray project" --encoder nvenc --disc-preset bd25
+```
+
+This overwrites the previous oversized `.m2ts` files with BD-25-sized outputs. Expected final encoded media size is roughly 22 GiB before menu/BDMV overhead.
+
 ## Authoring handoff: playlist map and mux plan
 
 After converting the PowerPoint menu and analyzing media, generate the current Blu-ray authoring handoff plan:
