@@ -42,13 +42,6 @@ From the `hdcookbook/` directory:
 ./scripts/monitor-bluray-project.sh "/path/to/Blu-ray project"
 ```
 
-For Corey’s local project layout:
-
-```bash
-cd /home/corey/.openclaw/workspace/hdcookbook/hdcookbook
-./scripts/monitor-bluray-project.sh "/home/corey/.openclaw/Bluray project"
-```
-
 In the TUI:
 
 - `w` starts full autopilot
