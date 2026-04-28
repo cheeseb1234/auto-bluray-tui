@@ -81,6 +81,12 @@ build/final-bluray/bluray-project.iso
 
 ## Documentation
 
+Start with the walkthrough:
+
+```text
+hdcookbook/docs/walkthrough.md
+```
+
 Detailed workflow notes live here:
 
 ```text

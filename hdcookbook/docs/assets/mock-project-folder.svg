@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <rect width="960" height="540" fill="#0f172a"/>
+  <rect x="50" y="45" width="860" height="450" rx="18" fill="#111827" stroke="#475569" stroke-width="2"/>
+  <text x="82" y="92" fill="#e5e7eb" font-family="monospace" font-size="28" font-weight="700">/My Blu-ray Project</text>
+  <g font-family="monospace" font-size="23">
+    <text x="95" y="145" fill="#f8fafc">📄 menu.pptx</text>
+    <text x="95" y="190" fill="#bfdbfe">🎬 Video 1.mkv</text>
+    <text x="95" y="225" fill="#c4b5fd">💬 Video 1.srt</text>
+    <text x="95" y="270" fill="#bfdbfe">🎬 Video 2.mp4</text>
+    <text x="95" y="305" fill="#c4b5fd">💬 Video 2.srt</text>
+    <text x="95" y="350" fill="#bfdbfe">🎬 Video 3.mkv</text>
+    <text x="95" y="385" fill="#c4b5fd">💬 Video 3.srt</text>
+    <text x="95" y="430" fill="#bfdbfe">🎬 Video 4.mp4</text>
+    <text x="95" y="465" fill="#c4b5fd">💬 Video 4 Spanish.srt</text>
+  </g>
+  <rect x="530" y="160" width="315" height="180" rx="16" fill="#1e293b" stroke="#22c55e" stroke-width="3"/>
+  <text x="555" y="205" fill="#bbf7d0" font-family="Arial, sans-serif" font-size="24" font-weight="700">Matching rule</text>
+  <text x="555" y="250" fill="#e2e8f0" font-family="Arial, sans-serif" font-size="21">Button: “Video 1”</text>
+  <text x="555" y="285" fill="#e2e8f0" font-family="Arial, sans-serif" font-size="21">File: Video 1.mkv</text>
+  <text x="555" y="320" fill="#fbbf24" font-family="Arial, sans-serif" font-size="18">Exact stem match, case-insensitive</text>
+</svg>

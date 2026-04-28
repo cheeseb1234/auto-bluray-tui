@@ -103,7 +103,13 @@ PowerPoint button labels like `Video 1`, `Video 2`, etc. are mapped to matching 
 
 ## More documentation
 
-See:
+Start here:
+
+```text
+docs/walkthrough.md
+```
+
+Detailed notes:
 
 ```text
 docs/blu-ray-menu-authoring.md

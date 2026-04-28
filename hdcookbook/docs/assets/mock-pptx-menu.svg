@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <rect width="960" height="540" fill="#101827"/>
+  <rect x="34" y="34" width="892" height="472" rx="24" fill="#172033" stroke="#334155" stroke-width="2"/>
+  <text x="70" y="95" fill="#e2e8f0" font-family="Arial, sans-serif" font-size="44" font-weight="700">Example Blu-ray Menu</text>
+  <text x="70" y="138" fill="#94a3b8" font-family="Arial, sans-serif" font-size="22">Create this in PowerPoint as normal text boxes/buttons.</text>
+  <g font-family="Arial, sans-serif" font-size="30" font-weight="700">
+    <rect x="95" y="205" width="310" height="72" rx="14" fill="#1d4ed8" stroke="#93c5fd" stroke-width="3"/>
+    <text x="188" y="251" fill="white">Video 1</text>
+    <rect x="555" y="205" width="310" height="72" rx="14" fill="#1d4ed8" stroke="#93c5fd" stroke-width="3"/>
+    <text x="648" y="251" fill="white">Video 2</text>
+    <rect x="95" y="330" width="310" height="72" rx="14" fill="#1d4ed8" stroke="#93c5fd" stroke-width="3"/>
+    <text x="188" y="376" fill="white">Video 3</text>
+    <rect x="555" y="330" width="310" height="72" rx="14" fill="#1d4ed8" stroke="#93c5fd" stroke-width="3"/>
+    <text x="648" y="376" fill="white">Video 4</text>
+  </g>
+  <g fill="#fbbf24" font-family="Arial, sans-serif" font-size="17">
+    <text x="95" y="292">Button text must match video filename stem</text>
+    <text x="555" y="292">“Video 2” maps to “Video 2.mp4”</text>
+  </g>
+</svg>

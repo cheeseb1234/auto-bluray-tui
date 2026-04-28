@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <rect width="960" height="540" fill="#052e16"/>
+  <rect x="44" y="46" width="872" height="448" rx="18" fill="#0f172a" stroke="#22c55e" stroke-width="3"/>
+  <text x="80" y="95" fill="#86efac" font-family="monospace" font-size="28" font-weight="700">Final ISO Ready</text>
+  <text x="80" y="140" fill="#e2e8f0" font-family="monospace" font-size="21">ISO: build/final-bluray/bluray-project.iso</text>
+  <text x="80" y="175" fill="#e2e8f0" font-family="monospace" font-size="21">Size: 21.7 GB</text>
+  <rect x="80" y="220" width="800" height="92" rx="12" fill="#14301f" stroke="#22c55e"/>
+  <text x="110" y="258" fill="#bbf7d0" font-family="monospace" font-size="21">Burner: /dev/sr0 MATSHITA BD-MLT UJ230AS</text>
+  <text x="110" y="290" fill="#bbf7d0" font-family="monospace" font-size="21">Disc: blank BD-R, 25.0 GB available</text>
+  <g font-family="monospace" font-size="24" font-weight="700">
+    <rect x="130" y="365" width="210" height="64" rx="12" fill="#16a34a"/>
+    <text x="177" y="405" fill="white">b Burn</text>
+    <rect x="385" y="365" width="210" height="64" rx="12" fill="#2563eb"/>
+    <text x="433" y="405" fill="white">v Burner</text>
+    <rect x="640" y="365" width="210" height="64" rx="12" fill="#475569"/>
+    <text x="690" y="405" fill="white">q Exit</text>
+  </g>
+</svg>
