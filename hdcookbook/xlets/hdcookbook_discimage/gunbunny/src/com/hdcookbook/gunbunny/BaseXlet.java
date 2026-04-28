@@ -176,7 +176,9 @@ public abstract class BaseXlet
             destroyed = true;
             notifyAll();
         }
-        mainThread.interrupt();
+        if (mainThread != null) {
+            mainThread.interrupt();
+        }
         synchronized(this) {
             while (mainThreadRunning) {
                 try {
@@ -187,7 +189,9 @@ public abstract class BaseXlet
                 }
             }
         }
-        serviceContext.removeListener(this);
+        if (serviceContext != null) {
+            serviceContext.removeListener(this);
+        }
         ImageUtil.discardImages();
         EventManager.getInstance().removeUserEventListener(this);
         if (scene != null) {

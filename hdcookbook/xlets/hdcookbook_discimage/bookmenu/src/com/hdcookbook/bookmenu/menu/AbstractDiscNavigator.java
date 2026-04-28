@@ -523,14 +523,16 @@ public abstract class AbstractDiscNavigator
                 }
             } else if (event instanceof StartEvent) {
                 if (Debug.LEVEL > 0) {
+                    Time mediaTime = ((StartEvent) event).getMediaTime();
                     Debug.println("*** StartEvent at media time "
-                          + ((StartEvent) event).getMediaTime().getSeconds());
+                          + (mediaTime == null ? "unknown" : "" + mediaTime.getSeconds()));
                 }
                 playerIsStarted = true;
             } else if (event instanceof StopEvent) {
                 if (Debug.LEVEL > 0) {
+                    Time mediaTime = ((StopEvent) event).getMediaTime();
                     Debug.println("*** StopEvent at media time "
-                          + ((StopEvent) event).getMediaTime().getSeconds());
+                          + (mediaTime == null ? "unknown" : "" + mediaTime.getSeconds()));
                 }
                 playerIsStarted = false;
             }

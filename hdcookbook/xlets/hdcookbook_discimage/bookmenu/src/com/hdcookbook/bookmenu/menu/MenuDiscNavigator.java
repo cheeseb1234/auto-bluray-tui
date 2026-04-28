@@ -280,8 +280,12 @@ public class MenuDiscNavigator extends AbstractDiscNavigator {
      **/
     public synchronized void destroy() {
         super.destroy();
-        selectSound.dispose();
-        activateSound.dispose();
+        if (selectSound != null) {
+            selectSound.dispose();
+        }
+        if (activateSound != null) {
+            activateSound.dispose();
+        }
     }
 
 }
