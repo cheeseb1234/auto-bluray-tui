@@ -77,6 +77,22 @@ Controls:
 
 - `q` quit
 - `r` refresh immediately
+- `e` cycle encoder: `auto` / `nvenc` / `cpu`
+- `z` cycle resolution: `1920x1080` / `1280x720`
+- `l` cycle quality: `high` / `default` / `smaller`
+- `p` cycle NVENC preset: `p4` / `p5` / `p6` / `p7`
+- `a` cycle AC-3 audio bitrate: `448k` / `640k`
+- `o` cycle target: all / Video 1 / Video 2 / Video 3 / Video 4
+- `s` cycle smoke-test length: off / 5 / 30 / 120 seconds
+- `Enter` starts encoding with the currently displayed options
+
+The TUI writes selected options to:
+
+```text
+/home/corey/.openclaw/Bluray project/build/bluray-media/encode-options.json
+```
+
+It now shows both overall project progress and per-task progress.
 
 For a noninteractive snapshot:
 

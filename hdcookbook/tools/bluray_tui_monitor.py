@@ -10,6 +10,12 @@ import time
 import os
 from pathlib import Path
 
+ENCODERS = ['auto', 'nvenc', 'cpu']
+RESOLUTIONS = ['1920x1080', '1280x720']
+QUALITIES = [('high', 16), ('default', 18), ('smaller', 21)]
+NVENC_PRESETS = ['p4', 'p5', 'p6', 'p7']
+AUDIO_BITRATES = ['448k', '640k']
+
 
 def human_time(sec):
     if sec is None:
@@ -33,6 +39,80 @@ def read_json(path: Path):
         return json.loads(path.read_text())
     except Exception:
         return None
+
+
+
+
+def config_path(project: Path):
+    return project / 'build' / 'bluray-media' / 'encode-options.json'
+
+
+def default_config():
+    return {
+        'encoder': 'auto',
+        'resolution': '1920x1080',
+        'quality': 'default',
+        'nvenc_preset': 'p5',
+        'audio_bitrate': '640k',
+        'only': '',
+        'smoke_seconds': '',
+    }
+
+
+def load_config(project: Path):
+    cfg = default_config()
+    saved = read_json(config_path(project)) or {}
+    cfg.update({k: v for k, v in saved.items() if k in cfg})
+    return cfg
+
+
+def save_config(project: Path, cfg: dict):
+    path = config_path(project)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(cfg, indent=2) + '\n')
+
+
+def cycle(value, choices, step=1):
+    try:
+        i = choices.index(value)
+    except ValueError:
+        i = 0
+    return choices[(i + step) % len(choices)]
+
+
+def quality_value(cfg):
+    for name, value in QUALITIES:
+        if name == cfg.get('quality'):
+            return value
+    return 18
+
+
+def build_encode_command(root: Path, project: Path, cfg: dict):
+    cmd = [str(root / 'scripts' / 'prepare-bluray-media.sh'), str(project)]
+    cmd += ['--encoder', cfg['encoder']]
+    cmd += ['--resolution', cfg['resolution']]
+    q = str(quality_value(cfg))
+    cmd += ['--cq', q, '--crf', q]
+    cmd += ['--nvenc-preset', cfg['nvenc_preset']]
+    cmd += ['--audio-bitrate', cfg['audio_bitrate']]
+    if cfg.get('only'):
+        cmd += ['--only', cfg['only']]
+    if cfg.get('smoke_seconds'):
+        cmd += ['--smoke-seconds', str(cfg['smoke_seconds'])]
+    return cmd
+
+
+def start_encode(root: Path, project: Path, cfg: dict):
+    save_config(project, cfg)
+    logs = project / 'build' / 'bluray-media' / 'logs'
+    logs.mkdir(parents=True, exist_ok=True)
+    control_log = logs / 'tui-started-encode.log'
+    cmd = build_encode_command(root, project, cfg)
+    with control_log.open('ab') as log:
+        log.write(('\n=== TUI start {} ===\n'.format(time.strftime('%Y-%m-%d %H:%M:%S'))).encode())
+        log.write(('CMD: ' + ' '.join(cmd) + '\n').encode())
+        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    return proc.pid, str(control_log)
 
 
 def read_progress(path: Path):
@@ -161,14 +241,21 @@ def collect(project: Path, root: Path):
             'bitrate': prog.get('bitrate', ''),
         })
 
-    return rows, {'manifest': True, 'media_root': str(media_root), 'tools': tool_status(root)}
+    total_duration = sum(float(r.get('duration') or 0) for r in rows)
+    total_done = sum(float((r.get('progress_seconds') or r.get('encoded_duration') or 0)) for r in rows)
+    overall_percent = min(100.0, total_done / total_duration * 100) if total_duration else None
+    done_count = sum(1 for r in rows if r.get('status') == 'done')
+    return rows, {'manifest': True, 'media_root': str(media_root), 'tools': tool_status(root), 'overall_percent': overall_percent, 'done_count': done_count, 'total_count': len(rows)}
 
 
 def bar(width: int, percent):
     inner = max(1, width - 2)
     if percent is None:
         return '[' + ' ' * inner + ']'
-    filled = int(inner * percent / 100)
+    if percent >= 99.9:
+        percent = 100.0
+    filled = int(round(inner * percent / 100))
+    filled = max(0, min(inner, filled))
     return '[' + '#' * filled + '-' * (inner - filled) + ']'
 
 
@@ -190,6 +277,8 @@ def draw(stdscr, project: Path, root: Path):
     except curses.error:
         pass
     stdscr.nodelay(True)
+    cfg = load_config(project)
+    message = ''
     while True:
         rows, meta = collect(project, root)
         height, width = stdscr.getmaxyx()
@@ -197,7 +286,7 @@ def draw(stdscr, project: Path, root: Path):
         y = 0
         safe_add(stdscr, y, 0, f'Blu-ray Project Monitor | {project}', width - 1, curses.A_BOLD)
         y += 1
-        safe_add(stdscr, y, 0, 'q quit | r refresh | run encode separately: ./scripts/prepare-bluray-media.sh "{}"'.format(project), width - 1)
+        safe_add(stdscr, y, 0, 'q quit | r refresh | ENTER start | e encoder | z resolution | l quality | p preset | a audio | o only | s smoke', width - 1)
         y += 2
 
         if not meta.get('manifest'):
@@ -215,6 +304,15 @@ def draw(stdscr, project: Path, root: Path):
         safe_add(stdscr, y, 0, 'Tools: ' + '  '.join(f'{k}: {"ok" if v else "missing"}' for k, v in simple_tools.items()), width - 1)
         y += 1
         safe_add(stdscr, y, 0, 'GPU: ' + (gpu or 'NVIDIA/NVENC unavailable'), width - 1)
+        y += 1
+        overall = meta.get('overall_percent')
+        overall_text = f'{overall:5.1f}%' if overall is not None else '  ---%'
+        safe_add(stdscr, y, 0, f'Overall: {overall_text}  {meta.get("done_count",0)}/{meta.get("total_count",0)} done  {bar(30, overall)}', width - 1, curses.A_BOLD)
+        y += 1
+        safe_add(stdscr, y, 0, f'Options: encoder={cfg["encoder"]} resolution={cfg["resolution"]} quality={cfg["quality"]} nvenc_preset={cfg["nvenc_preset"]} audio={cfg["audio_bitrate"]} only={cfg.get("only") or "all"} smoke={cfg.get("smoke_seconds") or "off"}', width - 1)
+        y += 1
+        if message:
+            safe_add(stdscr, y, 0, message, width - 1, curses.A_BOLD)
         y += 2
 
         bar_width = max(18, min(34, width - 76))
@@ -225,7 +323,7 @@ def draw(stdscr, project: Path, root: Path):
         for row in rows:
             if y >= height - 3:
                 break
-            pct = row['percent']
+            pct = 100.0 if row.get('status') == 'done' else row['percent']
             pct_text = f'{pct:5.1f}%' if pct is not None else '  ---%'
             encoded = human_time(row['progress_seconds'] or row['encoded_duration'])
             duration = human_time(row['duration'])
@@ -250,9 +348,40 @@ def draw(stdscr, project: Path, root: Path):
         for _ in range(10):
             key = stdscr.getch()
             if key in (ord('q'), ord('Q')):
+                save_config(project, cfg)
                 return
             if key in (ord('r'), ord('R')):
                 break
+            if key in (10, 13):
+                try:
+                    pid, log = start_encode(root, project, cfg)
+                    message = f'Started encode PID {pid}; log {log}'
+                except Exception as e:
+                    message = f'Failed to start encode: {e}'
+                break
+            if key in (ord('e'), ord('E')):
+                cfg['encoder'] = cycle(cfg['encoder'], ENCODERS)
+                save_config(project, cfg); break
+            if key in (ord('z'), ord('Z')):
+                cfg['resolution'] = cycle(cfg['resolution'], RESOLUTIONS)
+                save_config(project, cfg); break
+            if key in (ord('l'), ord('L')):
+                cfg['quality'] = cycle(cfg['quality'], [q[0] for q in QUALITIES])
+                save_config(project, cfg); break
+            if key in (ord('p'), ord('P')):
+                cfg['nvenc_preset'] = cycle(cfg['nvenc_preset'], NVENC_PRESETS)
+                save_config(project, cfg); break
+            if key in (ord('a'), ord('A')):
+                cfg['audio_bitrate'] = cycle(cfg['audio_bitrate'], AUDIO_BITRATES)
+                save_config(project, cfg); break
+            if key in (ord('o'), ord('O')):
+                onlys = ['', 'Video 1', 'Video 2', 'Video 3', 'Video 4']
+                cfg['only'] = cycle(cfg.get('only',''), onlys)
+                save_config(project, cfg); break
+            if key in (ord('s'), ord('S')):
+                smokes = ['', '5', '30', '120']
+                cfg['smoke_seconds'] = cycle(str(cfg.get('smoke_seconds') or ''), smokes)
+                save_config(project, cfg); break
             time.sleep(0.1)
 
 
