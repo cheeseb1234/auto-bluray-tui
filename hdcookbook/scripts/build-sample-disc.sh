@@ -16,17 +16,6 @@ java_major() {
   }'
 }
 
-run_container_build() {
-  local engine="$1"
-
-  "$engine" build -f Dockerfile.jdk8 -t hdcookbook-jdk8 .
-  "$engine" run --rm \
-    -u "$(id -u):$(id -g)" \
-    -v "$ROOT:/work/hdcookbook${engine:+}" \
-    hdcookbook-jdk8 \
-    ant spotless hdcookbook-discimage
-}
-
 if command -v java >/dev/null 2>&1 && command -v ant >/dev/null 2>&1; then
   major="$(java_major || true)"
 
@@ -50,13 +39,21 @@ fi
 
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   docker build -f Dockerfile.jdk8 -t hdcookbook-jdk8 .
-  docker run --rm -u "$(id -u):$(id -g)" -v "$ROOT:/work/hdcookbook" hdcookbook-jdk8 ant spotless hdcookbook-discimage
+  docker run --rm \
+    -u "$(id -u):$(id -g)" \
+    -v "$ROOT:/work/hdcookbook" \
+    hdcookbook-jdk8 \
+    ant spotless hdcookbook-discimage
   exit 0
 fi
 
 if command -v podman >/dev/null 2>&1; then
   podman build -f Dockerfile.jdk8 -t hdcookbook-jdk8 .
-  podman run --rm -u "$(id -u):$(id -g)" -v "$ROOT:/work/hdcookbook:Z" hdcookbook-jdk8 ant spotless hdcookbook-discimage
+  podman run --rm \
+    -u "$(id -u):$(id -g)" \
+    -v "$ROOT:/work/hdcookbook:Z" \
+    hdcookbook-jdk8 \
+    ant spotless hdcookbook-discimage
   exit 0
 fi
 
