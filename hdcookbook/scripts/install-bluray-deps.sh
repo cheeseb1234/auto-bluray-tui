@@ -54,6 +54,22 @@ for tool in "${required_tools[@]}"; do
   fi
 done
 
+have_udf_iso_tool() {
+  for tool in mkisofs genisoimage xorrisofs; do
+    if have "$tool" && "$tool" -help 2>&1 | grep -qi -- '-udf\|udf'; then
+      return 0
+    fi
+  done
+  if have xorriso && xorriso -as mkisofs -help 2>&1 | grep -qi -- '-udf\|udf'; then
+    return 0
+  fi
+  return 1
+}
+
+if ! have_udf_iso_tool; then
+  missing_tools+=(udf-capable-mkisofs)
+fi
+
 if [[ ${#missing_tools[@]} -eq 0 ]]; then
   say "All core command-line dependencies are already present."
 else
@@ -72,28 +88,28 @@ if [[ ${#missing_tools[@]} -gt 0 ]]; then
     say "Installing packages with pacman"
     # jdk8-openjdk keeps old HD Cook Book/BD-J builds happiest. jre/openjdk newer
     # may work for some pieces, but the sample build is historically Java 8-era.
-    run_priv pacman -S --needed python ffmpeg libreoffice-fresh poppler curl unzip libisoburn apache-ant jdk8-openjdk
+    run_priv pacman -S --needed python ffmpeg libreoffice-fresh poppler curl unzip libisoburn cdrtools apache-ant jdk8-openjdk
   elif have apt-get; then
     say "Installing packages with apt-get"
     run_priv apt-get update
     # openjdk-8-jdk is not available on many modern Ubuntu/Debian releases; the
     # build script can fall back to Docker/Podman if Java 8 is unavailable.
-    run_priv apt-get install -y python3 ffmpeg libreoffice poppler-utils curl unzip xorriso ant default-jdk || {
+    run_priv apt-get install -y python3 ffmpeg libreoffice poppler-utils curl unzip xorriso genisoimage ant default-jdk || {
       warn "apt package install failed. Try installing openjdk-8-jdk manually or use Docker/Podman fallback."
       exit 1
     }
   elif have dnf; then
     say "Installing packages with dnf"
-    run_priv dnf install -y python3 ffmpeg libreoffice poppler-utils curl unzip xorriso ant java-1.8.0-openjdk-devel || \
-      run_priv dnf install -y python3 ffmpeg libreoffice poppler-utils curl unzip xorriso ant java-latest-openjdk-devel
+    run_priv dnf install -y python3 ffmpeg libreoffice poppler-utils curl unzip xorriso genisoimage ant java-1.8.0-openjdk-devel || \
+      run_priv dnf install -y python3 ffmpeg libreoffice poppler-utils curl unzip xorriso genisoimage ant java-latest-openjdk-devel
   elif have zypper; then
     say "Installing packages with zypper"
-    run_priv zypper install -y python3 ffmpeg libreoffice poppler-tools curl unzip xorriso ant java-1_8_0-openjdk-devel || \
-      run_priv zypper install -y python3 ffmpeg libreoffice poppler-tools curl unzip xorriso ant java-devel
+    run_priv zypper install -y python3 ffmpeg libreoffice poppler-tools curl unzip xorriso genisoimage ant java-1_8_0-openjdk-devel || \
+      run_priv zypper install -y python3 ffmpeg libreoffice poppler-tools curl unzip xorriso genisoimage ant java-devel
   elif have brew; then
     say "Installing packages with Homebrew"
-    brew install python ffmpeg libreoffice poppler curl unzip xorriso ant openjdk@8 || \
-      brew install python ffmpeg libreoffice poppler curl unzip xorriso ant openjdk
+    brew install python ffmpeg libreoffice poppler curl unzip xorriso cdrtools ant openjdk@8 || \
+      brew install python ffmpeg libreoffice poppler curl unzip xorriso cdrtools ant openjdk
   else
     err "No supported package manager found. Install these manually: ${required_tools[*]}"
     exit 1
@@ -121,6 +137,9 @@ for tool in "${required_tools[@]}"; do
     missing_after+=("$tool")
   fi
 done
+if ! have_udf_iso_tool; then
+  missing_after+=(udf-capable-mkisofs)
+fi
 if [[ ! -x "$ROOT/tools/bin/tsMuxer" && ! -x "$ROOT/tools/bin/tsMuxeR" && ! $(command -v tsMuxer 2>/dev/null || true) ]]; then
   missing_after+=(tsMuxer)
 fi

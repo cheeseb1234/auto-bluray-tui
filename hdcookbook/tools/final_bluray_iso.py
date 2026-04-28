@@ -114,21 +114,47 @@ def copytree_contents(src: Path, dst: Path):
             shutil.copy2(item, target)
 
 
-def make_iso(xorriso: Path, disc_root: Path, iso_path: Path, volume_id: str):
+def help_text(cmd: list[Path|str]) -> str:
+    try:
+        result = subprocess.run([str(x) for x in cmd] + ['-help'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, check=False)
+        return result.stdout or ''
+    except OSError:
+        return ''
+
+
+def mkisofs_udf_command(root: Path) -> list[Path|str]|None:
+    candidates: list[list[Path|str]] = []
+    for name in ('mkisofs', 'genisoimage', 'xorrisofs'):
+        tool = which(root, name)
+        if tool:
+            candidates.append([tool])
+    xorriso = which(root, 'xorriso')
+    if xorriso:
+        candidates.append([xorriso, '-as', 'mkisofs'])
+
+    for cmd in candidates:
+        text = help_text(cmd).lower()
+        if '-udf' in text or 'udf' in text:
+            return cmd
+    return None
+
+
+def make_iso(mkisofs_cmd: list[Path|str], disc_root: Path, iso_path: Path, volume_id: str):
     iso_path.parent.mkdir(parents=True, exist_ok=True)
     if iso_path.exists():
         iso_path.unlink()
-    # Prefer UDF when the mkisofs-compatible frontend supports it. Some xorriso
-    # builds expose xorrisofs but do not accept mkisofs' -udf flag; fall back to
-    # a plain ISO image so the workflow still produces a burnable/testable image.
-    base = [xorriso, '-as', 'mkisofs', '-iso-level', '3', '-volid', volume_id[:32], '-o', iso_path, disc_root]
+
+    cmd = [*mkisofs_cmd, '-iso-level', '3', '-udf', '-volid', volume_id[:32], '-o', iso_path, disc_root]
     try:
-        run([xorriso, '-as', 'mkisofs', '-iso-level', '3', '-udf', '-volid', volume_id[:32], '-o', iso_path, disc_root])
+        run(cmd)
     except subprocess.CalledProcessError:
         if iso_path.exists():
             iso_path.unlink()
-        print('WARNING: mkisofs frontend rejected -udf; retrying without -udf.', file=sys.stderr, flush=True)
-        run(base)
+        raise SystemExit(
+            'Failed to create a UDF Blu-ray image. Refusing to fall back to plain ISO9660/Rock Ridge, '
+            'because that can burn successfully but fail as a Blu-ray disc. Install a UDF-capable '
+            'mkisofs/genisoimage/cdrtools package and rerun.'
+        )
 
 
 def main():
@@ -159,10 +185,13 @@ def main():
     ts_muxer = which(root, 'tsMuxer')
     if not ts_muxer:
         raise SystemExit('Missing tsMuxer; run scripts/get-tsmuxer.sh first')
-    xorriso = which(root, 'xorriso') or shutil.which('mkisofs') or shutil.which('genisoimage')
-    xorriso = Path(xorriso) if xorriso else None
-    if not args.no_iso and not xorriso:
-        raise SystemExit('Missing xorriso/mkisofs; install xorriso/libisoburn or run with --no-iso')
+    mkisofs_cmd = mkisofs_udf_command(root) if not args.no_iso else None
+    if not args.no_iso and not mkisofs_cmd:
+        raise SystemExit(
+            'Missing a UDF-capable ISO creator. Blu-ray images must be UDF; plain ISO9660/Rock Ridge images '
+            'can burn but fail playback. Install cdrtools/mkisofs or genisoimage, then rerun, or use --no-iso '
+            'to build the BDMV tree only.'
+        )
 
     overlay_zip = root / 'xlets' / 'hdcookbook_discimage' / 'HDCookbookDiscImage.zip'
     if not overlay_zip.exists():
@@ -231,7 +260,7 @@ def main():
     (output_root / 'final-report.json').write_text(json.dumps(report, indent=2) + '\n')
 
     if not args.no_iso:
-        make_iso(xorriso, disc_root, iso_path, args.volume_id)
+        make_iso(mkisofs_cmd, disc_root, iso_path, args.volume_id)
         report['iso_bytes'] = iso_path.stat().st_size
         (output_root / 'final-report.json').write_text(json.dumps(report, indent=2) + '\n')
 
