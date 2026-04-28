@@ -98,3 +98,5 @@ hdcookbook/docs/blu-ray-menu-authoring.md
 ## Credits / upstream heritage
 
 Auto Blu-ray TUI includes and builds on the archived HD Cook Book / java.net source tree. HD Cook Book remains the BD-J/GRIN foundation and reference implementation; this project adds the automated PowerPoint-to-Blu-ray TUI workflow, media preparation, ISO assembly, and burn automation around it.
+
+Find this useful? Feel free to donate https://buymeacoffee.com/rarecore
