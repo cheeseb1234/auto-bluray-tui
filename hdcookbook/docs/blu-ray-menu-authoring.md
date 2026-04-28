@@ -1,10 +1,28 @@
-# Blu-ray Interactive Menu Authoring with HD Cook Book
+# Auto Blu-ray TUI: Blu-ray Authoring Workflow
 
-This repo is an archive of the old java.net projects. The HD Cook Book code lives in the `hdcookbook/` subdirectory, not at repository root.
+Auto Blu-ray TUI is a PowerPoint-to-Blu-ray authoring dashboard built around the HD Cook Book / BD-J / GRIN tooling. The included HD Cook Book source comes from the archived java.net project and is credited as the foundation for the menu/BD-J layer.
 
 ## Quick start
 
-From this `hdcookbook/` directory:
+From this `hdcookbook/` directory, install/check dependencies first:
+
+```bash
+./scripts/install-bluray-deps.sh
+```
+
+To only report missing dependencies without installing anything:
+
+```bash
+./scripts/install-bluray-deps.sh --check-only
+```
+
+Then launch the full TUI workflow:
+
+```bash
+./scripts/monitor-bluray-project.sh "/home/corey/.openclaw/Bluray project"
+```
+
+For just the upstream sample build:
 
 ```bash
 ./scripts/build-sample-disc.sh
@@ -66,17 +84,37 @@ The monitor shows:
 
 - ffmpeg/ffprobe/tsMuxer/xorriso availability
 - NVIDIA/NVENC availability
-- each video's pending/running/smoke/partial/done/failed status
+- color-highlighted warnings/errors/ready states
+- autopilot step progress, including the `menu.pptx` conversion step
+- each video's pending/running/smoke/partial/done/failed status and progress bar
 - percent complete from ffmpeg progress files
 - encoded duration vs source duration
 - active encoder, output size, fps, speed, bitrate, and output path
+- final ISO readiness and optical burner/burn status
 
-Run encoding in one terminal and the monitor in a second terminal. They cannot both control the same terminal at once.
+The monitor can now run the whole noninteractive workflow in order. Press `w` to start autopilot; it will:
+
+1. analyze the Blu-ray project and refresh the media manifest/ffmpeg plan
+2. convert `menu.pptx` into the generated GRIN menu sample
+3. install/use local `tsMuxer` if it is not already available
+4. encode the videos with the currently displayed TUI options
+5. regenerate the Blu-ray authoring/playlist mux plan
+6. build the HD Cook Book / BD-J menu overlay
+7. mux each encoded title into Blu-ray `STREAM`/`CLIPINF`/`PLAYLIST` assets
+8. assemble the final BDMV tree and create `bluray-project.iso`
+9. if a burner and blank/appendable disc large enough for the ISO are detected, automatically burn the first disc
+10. return to the TUI so the user can burn another copy or exit
+
+Preview launchers are intentionally not part of autopilot because they open interactive GUI windows.
 
 Controls:
 
 - `q` quit
 - `r` refresh immediately
+- `w` start autopilot workflow using the currently displayed options
+- `v` cycle detected optical burner device
+- `b` burn the final ISO to the selected optical burner
+- `k` stop the currently running encode/autopilot/burn process group
 - `e` cycle encoder: `auto` / `nvenc` / `cpu`
 - `z` cycle resolution: `1920x1080` / `1280x720`
 - `l` cycle quality: `high` / `default` / `smaller`
@@ -84,7 +122,7 @@ Controls:
 - `a` cycle AC-3 audio bitrate: `448k` / `640k`
 - `o` cycle target: all / Video 1 / Video 2 / Video 3 / Video 4
 - `s` cycle smoke-test length: off / 5 / 30 / 120 seconds
-- `Enter` starts encoding with the currently displayed options
+- `Enter` starts encoding only with the currently displayed options
 
 The TUI writes selected options to:
 
@@ -93,6 +131,30 @@ The TUI writes selected options to:
 ```
 
 It now shows both overall project progress and per-task progress.
+
+If you close and reopen the TUI while an encode is still running, it adopts the existing ffmpeg process from the state/output path and resumes showing live progress. It will also refuse to start a duplicate encode while one is already running; press `k` first if you intentionally want to stop the current run.
+
+Autopilot status/logs are written under:
+
+```text
+/home/corey/.openclaw/Bluray project/build/bluray-workflow/
+```
+
+Final full-disc outputs are written under:
+
+```text
+/home/corey/.openclaw/Bluray project/build/final-bluray/disc-root/
+/home/corey/.openclaw/Bluray project/build/final-bluray/bluray-project.iso
+/home/corey/.openclaw/Bluray project/build/final-bluray/final-report.json
+```
+
+Burn status/logs are written under:
+
+```text
+/home/corey/.openclaw/Bluray project/build/bluray-burn/
+```
+
+Once the ISO exists, autopilot checks detected `/dev/sr*` burners with `xorriso -tell_media_space`. If a blank/appendable/overwriteable disc has enough capacity for the ISO, autopilot burns it automatically with `xorriso -as cdrecord` and ejects when done. The TUI then keeps running so you can insert another blank disc and press `b` to burn another copy, or press `q` to exit. Press `v` to choose a different detected burner before manual repeat burns.
 
 For a noninteractive snapshot:
 
@@ -114,9 +176,9 @@ The current full-quality NVENC encodes are about 44.4 GiB total, so they require
 
 Project duration is about 7.87 hours. To fit single-layer BD-25 with filesystem/menu overhead, the workflow uses approximately:
 
-- video average bitrate: `6200k`
+- video average bitrate: `5400k`
 - AC-3 audio: `448k`
-- video VBV maxrate/buffer: `12000k` / `15000k`
+- video VBV maxrate/buffer: `9000k` / `12000k`
 
 Run from the TUI and set `disc=bd25`, or from the CLI:
 
@@ -124,7 +186,13 @@ Run from the TUI and set `disc=bd25`, or from the CLI:
 ./scripts/prepare-bluray-media.sh "/home/corey/.openclaw/Bluray project" --encoder nvenc --disc-preset bd25
 ```
 
-This overwrites the previous oversized `.m2ts` files with BD-25-sized outputs. Expected final encoded media size is roughly 22 GiB before menu/BDMV overhead.
+This overwrites the previous oversized `.m2ts` files with BD-25-sized outputs. Expected final encoded media size is roughly 20–22 GiB before menu/BDMV overhead.
+
+The encoder now skips existing outputs that are already acceptable for the current run. A file is considered acceptable when it probes as full-length H.264 video with 48 kHz AC-3 audio at the selected resolution; for `disc=bd25`, it must also stay under the BD-25 bitrate ceiling so older oversized quality encodes are not reused by mistake. The TUI marks files over about 7.2 Mb/s container bitrate as `oversized` instead of `done`. To intentionally redo everything, add:
+
+```bash
+--force-reencode
+```
 
 ## Authoring handoff: playlist map and mux plan
 
@@ -140,6 +208,20 @@ Outputs:
 /home/corey/.openclaw/Bluray project/build/bluray-authoring/playlist-map.json
 /home/corey/.openclaw/Bluray project/build/bluray-authoring/mux-plan.md
 /home/corey/.openclaw/Bluray project/build/bluray-authoring/tsmuxer-meta/*.meta
+```
+
+After all encoded files are BD-25 acceptable, assemble the final tree and ISO:
+
+```bash
+./scripts/create-final-bluray-iso.sh "/home/corey/.openclaw/Bluray project"
+```
+
+Outputs:
+
+```text
+/home/corey/.openclaw/Bluray project/build/final-bluray/disc-root/
+/home/corey/.openclaw/Bluray project/build/final-bluray/bluray-project.iso
+/home/corey/.openclaw/Bluray project/build/final-bluray/final-report.json
 ```
 
 This assigns stable IDs for the menu buttons:

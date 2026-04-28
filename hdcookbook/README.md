@@ -1,73 +1,114 @@
-# HDCOOKBOOK java.net project, version 1.2
+# Auto Blu-ray TUI
 
-This directory is an archive of the old hdcookbook open-source project
-from java.net.  It has been updated to run on JDK 1.8, and was tested
-and known to work in January 2022.  See README.pdf for a description
-of the contents, and see
-<a href="https://hdcookbook.jovial.com/">https://hdcookbook.jovial.com/</a>
-for an archive of the companion web site.
+Auto Blu-ray TUI is a practical Blu-ray authoring workflow built on top of the archived HD Cook Book / BD-J / GRIN tooling.
 
-## Quick start for interactive Blu-ray menu work
+Instead of hand-running a long chain of conversion, encoding, muxing, ISO, and burn commands, the project provides a single terminal dashboard that can automatically work through the whole process.
 
-The repository includes a sample BD-J/GRIN interactive menu under
-`xlets/hdcookbook_discimage/bookmenu`. To build the sample disc-image
-overlay from this directory:
+## What Auto Blu-ray TUI does
+
+The TUI/autopilot workflow can:
+
+1. analyze a project folder of videos/subtitles
+2. process `menu.pptx` into generated GRIN menu assets
+3. encode Blu-ray-compatible H.264 + AC-3 `.m2ts` files
+4. use NVIDIA NVENC/RTX acceleration automatically when available
+5. enforce BD-25 sizing guardrails
+6. skip existing acceptable encodes instead of wasting time
+7. build the HD Cook Book BD-J menu overlay
+8. mux final Blu-ray title assets
+9. assemble a final Blu-ray ISO
+10. detect optical burners and blank media
+11. burn the finished ISO, then prompt to burn another copy or exit
+
+## Install dependencies
+
+From this `hdcookbook/` directory:
 
 ```bash
-./scripts/build-sample-disc.sh
+./scripts/install-bluray-deps.sh
 ```
 
-The script uses local JDK 8 + Ant when available, or Docker as a fallback.
-See `docs/blu-ray-menu-authoring.md` for the practical authoring map: where
-the menu script lives, how the GRIN build flows, and which files to copy/edit
-for a custom interactive Blu-ray menu.
+Check-only mode:
 
-The following worked on Ubuntu Linux 20.x, with the standard JDK 1.8
-installation selected:
+```bash
+./scripts/install-bluray-deps.sh --check-only
 ```
-billf@Zathras:~/github/java.net/hdcookbook$ ant
-Buildfile: /home/billf/github/java.net/hdcookbook/build.xml
 
-   ...  many lines of build output  ...
+The installer handles common Linux/macOS package managers where possible and installs/checks tools such as:
 
-BUILD SUCCESSFUL
-Total time: 17 seconds
-```
-```
-billf@Zathras:~/github/java.net/hdcookbook$ java -version
-openjdk version "1.8.0_312"
-OpenJDK Runtime Environment (build 1.8.0_312-8u312-b07-0ubuntu1~20.04-b07)
-OpenJDK 64-Bit Server VM (build 25.312-b07, mixed mode)
-```
-```
-billf@Zathras:~/github/java.net/hdcookbook$ ant -version
-Apache Ant(TM) version 1.10.12 compiled on October 13 2021
-```
-And, similarly on MacOS 11.6.2 (Big Sur, M1 silicon):
-```
-billf@londo:~/github/java.net/hdcookbook$ ant
-Buildfile: /Users/billf/github/java.net/hdcookbook/build.xml
+- Python 3
+- ffmpeg / ffprobe
+- LibreOffice
+- Poppler / `pdftoppm`
+- Java / Ant
+- xorriso / libisoburn
+- curl / unzip
+- local tsMuxer
 
-   ...  many lines of build output  ...
+## Launch the TUI
 
-build-hdcookbook-xlets:
+```bash
+./scripts/monitor-bluray-project.sh "/path/to/Blu-ray project"
+```
 
-BUILD SUCCESSFUL
-Total time: 8 seconds
-```
-```
-billf@londo:~/github/java.net/hdcookbook$ java -version
-openjdk version "1.8.0_302"
-OpenJDK Runtime Environment (Zulu 8.56.0.23-CA-macos-aarch64) (build 1.8.0_302-b08)
-OpenJDK 64-Bit Server VM (Zulu 8.56.0.23-CA-macos-aarch64) (build 25.302-b08, mixed mode)
-```
-```
-billf@londo:~/github/java.net/hdcookbook$ ant -version
-Apache Ant(TM) version 1.10.12 compiled on October 13 2021
-```
-## -XDignore.symbol.file
+Example:
 
-Note that `DiscCreationTools/security/make/build.xml` passes
-`-XDignore.symbol.file` to `javac`.  This is necessary; it appears
-some of the tools used for signing are hidden in JDK 1.8, unless
-this option is passed.
+```bash
+./scripts/monitor-bluray-project.sh "/home/corey/.openclaw/Bluray project"
+```
+
+Main controls:
+
+- `w` — start full autopilot
+- `Enter` — encode only
+- `b` — burn final ISO to selected optical burner
+- `v` — cycle detected burners
+- `k` — stop running encode/autopilot/burn process
+- `q` — quit
+
+The TUI shows color-highlighted status, per-step progress, per-video progress, final ISO readiness, and burner/media status.
+
+## Outputs
+
+Build products are written inside the source media project folder:
+
+```text
+build/bluray-media/        encoded video, logs, manifests
+build/bluray-authoring/    playlist maps and mux plans
+build/final-bluray/        final BDMV tree and ISO
+build/bluray-burn/         burn logs/state
+```
+
+Final ISO:
+
+```text
+build/final-bluray/bluray-project.iso
+```
+
+## Recommended project layout
+
+```text
+menu.pptx
+Video 1.mkv
+Video 1.srt
+Video 2.mp4
+Video 2.srt
+Video 3.mkv
+Video 3.srt
+Video 4.mp4
+Video 4.srt
+```
+
+PowerPoint button labels like `Video 1`, `Video 2`, etc. are mapped to matching media files.
+
+## More documentation
+
+See:
+
+```text
+docs/blu-ray-menu-authoring.md
+```
+
+## Credits / upstream heritage
+
+Auto Blu-ray TUI includes the HD Cook Book java.net project archive, version 1.2, as its BD-J/GRIN foundation. Credit goes to the original HD Cook Book authors for that base. The Auto Blu-ray TUI project adds the automated PowerPoint-to-Blu-ray dashboard, media preparation, ISO assembly, and burn workflow.
