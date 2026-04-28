@@ -2,7 +2,9 @@
 
 A practical, terminal-first workflow for turning a folder of videos plus a PowerPoint menu into a Blu-ray-ready project, final ISO, and optional burned disc.
 
-Auto Blu-ray TUI is its own project. It includes and builds on the archived HD Cook Book / BD-J / GRIN tooling, with credit to the original authors, but the user-facing goal is a modern automated Blu-ray authoring dashboard.
+Auto Blu-ray TUI (terminal user interface)is its own project. It includes and builds on the archived HD Cook Book / BD-J / GRIN tooling, but the user-facing goal is a modern automated Blu-ray authoring dashboard.
+
+Instead of learning and navigating a complex program or paying for expensive other options, just use design your disc menu in powerpoint!
 
 ## What it does
 
