@@ -660,13 +660,16 @@ public class SecurityUtil {
 
     private void signJarFile(String jfile) throws Exception {
         String[] jarSigningArgs = {"-sigFile", "SIG-BD00",
-            "-digestalg", "SHA1",
+            "-digestalg", "SHA-256",
             "-keypass", contentSignerPassword,
             "-keystore", keystoreFile,
             "-storepass", keystorePassword,
             "-verbose", jfile, contentSignerAlias};
         sun.security.tools.jarsigner.Main.main(jarSigningArgs);
-        signWithBDJHeader(jfile);
+        // Keep the standard jarsigner block intact for modern libbluray/JRE verification.
+        // The legacy BD-J header rewrite produces SIG-BD00 blocks that current
+        // Java rejects with "cannot verify signature block file META-INF/SIG-BD00".
+        // signWithBDJHeader(jfile);
     }
 
     /**

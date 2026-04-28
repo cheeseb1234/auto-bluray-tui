@@ -237,6 +237,18 @@ def main():
         patch_clip_id(mpls_src, mpls_dst, '00000', playlist_id)
         summary.append({**row, **info, 'stream': str(stream_dst), 'playlist': str(mpls_dst), 'clipinf': str(clpi_dst)})
 
+    # The HD Cook Book overlay includes a legacy first-play playlist named
+    # 00000.mpls. If left untouched, libbluray/VLC tries to open missing
+    # CLIPINF/00000.clpi and STREAM/00000.m2ts before BD-J can settle, causing
+    # a fatal playback stop. Point that compatibility playlist at the first real
+    # title instead of duplicating gigabytes of video as 00000.m2ts.
+    if summary:
+        first_playlist_id = str(summary[0]['playlist_id']).zfill(5)
+        first_play_playlist = disc_root / 'BDMV' / 'PLAYLIST' / '00000.mpls'
+        if first_play_playlist.exists() and first_playlist_id != '00000':
+            patched = first_play_playlist.read_bytes().replace(b'00000', first_playlist_id.encode('ascii'))
+            first_play_playlist.write_bytes(patched)
+
     backup = disc_root / 'BDMV' / 'BACKUP'
     shutil.rmtree(backup, ignore_errors=True)
     backup.mkdir(parents=True, exist_ok=True)
