@@ -269,10 +269,13 @@ def project_diagnostics(project: Path, root: Path, rows=None, meta=None, cfg=Non
     if model and report.exists():
         try:
             report_data = read_json(report) or {}
-            report_titles = {t.get('video_file') for t in report_data.get('titles', [])}
-            expected_titles = {a.get('video_file') for a in model.get('video_actions', [])}
+            # Preflight parses the PPTX without regenerating the derived loop
+            # videos, so compare only normal button actions here. Loop playlists
+            # are validated by the generated playlist map/final report path.
+            report_titles = {t.get('video_file') for t in report_data.get('titles', []) if t.get('kind', 'button') == 'button'}
+            expected_titles = {a.get('video_file') for a in model.get('video_actions', []) if a.get('kind', 'button') == 'button'}
             if expected_titles and report_titles and report_titles != expected_titles:
-                add('warning', 'The final report does not match the current PPTX video actions.', 'Rebuild final ISO; playlist map may be stale.')
+                add('warning', 'The final report does not match the current PPTX video button actions.', 'Rebuild final ISO; playlist map may be stale.')
         except Exception:
             pass
 

@@ -145,8 +145,15 @@ def language_from_name(path: Path):
 
 
 def discover(project: Path):
-    videos=sorted([p for p in project.iterdir() if p.suffix.lower() in VIDEO_EXTS], key=lambda p:p.name.lower())
     loop_dir = project / 'build' / 'pptx-menu-loops'
+    loop_source_names = set()
+    source_list = loop_dir / 'source-videos.json'
+    if source_list.exists():
+        try:
+            loop_source_names = set(json.loads(source_list.read_text()))
+        except Exception:
+            loop_source_names = set()
+    videos=sorted([p for p in project.iterdir() if p.suffix.lower() in VIDEO_EXTS and p.name not in loop_source_names], key=lambda p:p.name.lower())
     if loop_dir.exists():
         videos.extend(sorted([p for p in loop_dir.iterdir() if p.suffix.lower() in VIDEO_EXTS], key=lambda p:p.name.lower()))
     subs=sorted([p for p in project.iterdir() if p.suffix.lower() in SUB_EXTS], key=lambda p:p.name.lower())

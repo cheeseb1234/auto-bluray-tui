@@ -240,6 +240,7 @@ def loop_rect_px(model, loop, target=(1920,1080)):
 
 def generate_loop_source_videos(model, project_dir: Path, assets: Path, target=(1920,1080), seconds=30):
     loop_dir = project_dir / 'build' / 'pptx-menu-loops'
+    loop_sources = set()
     for slide in model['slides']:
         loops = slide.get('loop_videos') or []
         if not loops:
@@ -250,6 +251,7 @@ def generate_loop_source_videos(model, project_dir: Path, assets: Path, target=(
         cmd = ['ffmpeg', '-hide_banner', '-y', '-loop', '1', '-i', str(bg)]
         for loop in loops:
             loop['rect_px'] = loop_rect_px(model, loop, target)
+            loop_sources.add(loop['video_file'])
             cmd += ['-stream_loop', '-1', '-i', str(project_dir / loop['video_file'])]
         cmd += ['-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000']
         filters=[f'[0:v]scale={target[0]}:{target[1]},format=yuv420p[base]']
@@ -268,6 +270,9 @@ def generate_loop_source_videos(model, project_dir: Path, assets: Path, target=(
         ]
         subprocess.run(cmd, check=True)
         slide['menu_loop_video'] = str(out.relative_to(project_dir))
+    if loop_sources:
+        loop_dir.mkdir(parents=True, exist_ok=True)
+        (loop_dir / 'source-videos.json').write_text(json.dumps(sorted(loop_sources), indent=2) + '\n')
 
 
 def draw_overlays(model, assets: Path, target=(1920,1080)):
