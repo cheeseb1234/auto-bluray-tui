@@ -21,6 +21,9 @@ Auto Blu-ray TUI guides the whole disc-building process from one dashboard:
 9. detects an optical burner and blank disc
 10. burns the first disc automatically when media is large enough, then lets you burn more copies or exit
 
+<img width="2520" height="1104" alt="Screenshot_20260429_162310" src="https://github.com/user-attachments/assets/18199d27-90fc-4093-8de4-a17c8f15119e" />
+<img width="2520" height="1104" alt="Screenshot_20260429_162310" src="https://github.com/user-attachments/assets/639aaf93-e7f4-4d89-af89-cab0546704cb" />
+
 ## Why it is useful
 
 Blu-ray authoring normally involves a fragile chain of tools and formats. This project wraps that chain in a single TUI that shows what is happening, where it failed, and what is safe to reuse.
