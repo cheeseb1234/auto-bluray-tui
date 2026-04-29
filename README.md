@@ -37,7 +37,7 @@ Benefits:
 
 ## Quick start
 
-From the `hdcookbook/` directory:
+From the repository root:
 
 ```bash
 ./scripts/install-bluray-deps.sh
@@ -96,11 +96,11 @@ build/final-bluray/bluray-project.iso
 
 Start with the walkthrough:
 
-- [hdcookbook/docs/walkthrough.md](https://github.com/cheeseb1234/auto-bluray-tui/blob/main/hdcookbook/docs/walkthrough.md)
+- [docs/walkthrough.md](https://github.com/cheeseb1234/auto-bluray-tui/blob/main/docs/walkthrough.md)
 
 Detailed workflow notes live here:
 
-- [hdcookbook/docs/blu-ray-menu-authoring.md](https://github.com/cheeseb1234/auto-bluray-tui/blob/main/hdcookbook/docs/blu-ray-menu-authoring.md)
+- [docs/blu-ray-menu-authoring.md](https://github.com/cheeseb1234/auto-bluray-tui/blob/main/docs/blu-ray-menu-authoring.md)
 
 ## Credits / upstream heritage
 
