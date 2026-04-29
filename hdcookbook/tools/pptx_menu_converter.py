@@ -280,13 +280,16 @@ def draw_overlays(model, assets: Path, target=(1920,1080)):
     sx, sy = target[0]/src_w, target[1]/src_h
     for slide in model['slides']:
         bg = Image.open(assets / f"{slide['id']}_bg.png").convert('RGBA')
+        original_bg = bg.copy()
+        loop_rects = []
         for loop in slide.get('loop_videos', []):
             r=loop.get('rect_px') or loop_rect_px(model, loop, target)
             x,y,w,h = r['x'], r['y'], r['w'], r['h']
             loop['rect_px']={'x':x,'y':y,'w':w,'h':h}
+            loop_rects.append((x, y, x + w, y + h))
             # Replace the PowerPoint placeholder shape with a transparent video
-            # window.  The looped playlist plays on the BD video plane behind
-            # this GRIN graphics layer.
+            # window.  The looped playlist plays as the bottom layer on the BD
+            # video plane behind this GRIN graphics layer.
             cut=Image.new('RGBA', (w, h), (0, 0, 0, 0))
             bg.paste(cut, (x, y))
         bg.save(assets / f"{slide['id']}_bg.png")
@@ -310,15 +313,25 @@ def draw_overlays(model, assets: Path, target=(1920,1080)):
             w = max(1, min(target[0] - x, w))
             h = max(1, min(target[1] - y, h))
             btn['rect_px']={'x':x,'y':y,'w':w,'h':h}
+            pad=8
+            crop_box=(max(0,x-pad), max(0,y-pad), min(target[0],x+w+pad), min(target[1],y+h+pad))
+            if any(not (x + w <= lx1 or x >= lx2 or y + h <= ly1 or y >= ly2) for lx1, ly1, lx2, ly2 in loop_rects):
+                # If a loop placeholder sits underneath a button, the transparent
+                # video window would otherwise erase the button's normal state.
+                # Re-add that button crop as a fixed graphic above the video
+                # plane, while selected/activated states still draw on top.
+                btn['normal_overlay'] = True
+                normal=Image.new('RGBA',(w+pad*2,h+pad*2),(0,0,0,0))
+                crop=original_bg.crop(crop_box)
+                normal.paste(crop,(crop_box[0]-(x-pad), crop_box[1]-(y-pad)))
+                normal.save(assets/f"{slide['id']}_{btn['id']}_normal.png")
             for state, outline in [('selected',(255,255,255,245)),('activated',(64,255,170,255))]:
-                pad=8
                 # Build the state image as an opaque crop from the rendered slide,
                 # then draw only a border.  Some BD-J/libbluray paths don't handle
                 # alpha-only overlay PNGs reliably; opaque crops preserve the exact
                 # PowerPoint button text/art instead of covering it.
-                crop_box=(max(0,x-pad), max(0,y-pad), min(target[0],x+w+pad), min(target[1],y+h+pad))
                 im=Image.new('RGBA',(w+pad*2,h+pad*2),(0,0,0,255))
-                crop=bg.crop(crop_box)
+                crop=original_bg.crop(crop_box) if btn.get('normal_overlay') else bg.crop(crop_box)
                 im.paste(crop,(crop_box[0]-(x-pad), crop_box[1]-(y-pad)))
                 d=ImageDraw.Draw(im)
                 d.rounded_rectangle((2,2,w+pad*2-2,h+pad*2-2), radius=22, outline=outline, width=5)
@@ -502,6 +515,7 @@ def generate_show(model, out: Path):
     for slide in model['slides']:
         sid=slide['id']
         loop = slide.get('menu_loop_action')
+        normal_features = [f'        F:{sid}.{btn["id"]}.Normal' for btn in slide['buttons'] if btn.get('normal_overlay')]
         setup_done = []
         if loop:
             video=(loop.get('video_file') or '').replace('\\', '\\\\').replace('"', '\\"')
@@ -509,8 +523,8 @@ def generate_show(model, out: Path):
             setup_done.append(f'        java_command [[ playMenuLoop("{video}", "{playlist}"); ]]')
         else:
             setup_done.append('        java_command [[ stopMenuLoop(); ]]')
-        lines += [f'segment S:{sid}.Enter','    setup {',f'        F:{sid}.BG',f'        F:{sid}.Buttons','    } setup_done {',*setup_done,f'        activate_segment S:{sid} ;','    }',';','']
-        lines += [f'segment S:{sid}','    active {',f'        F:{sid}.BG',f'        F:{sid}.Buttons','    } setup {',f'        F:{sid}.BG',f'        F:{sid}.Buttons','    } rc_handlers {',f'        R:{sid}','    }',';','']
+        lines += [f'segment S:{sid}.Enter','    setup {',f'        F:{sid}.BG',*normal_features,f'        F:{sid}.Buttons','    } setup_done {',*setup_done,f'        activate_segment S:{sid} ;','    }',';','']
+        lines += [f'segment S:{sid}','    active {',f'        F:{sid}.BG',*normal_features,f'        F:{sid}.Buttons','    } setup {',f'        F:{sid}.BG',*normal_features,f'        F:{sid}.Buttons','    } rc_handlers {',f'        R:{sid}','    }',';','']
     lines += [
         '# Empty segment used before video playback so GRIN has one frame to',
         '# erase any selected/activated button images from the graphics plane.',
@@ -527,6 +541,8 @@ def generate_show(model, out: Path):
         for btn in slide['buttons']:
             x=btn['rect_px']['x']-8; y=btn['rect_px']['y']-8
             bid=btn['id']
+            if btn.get('normal_overlay'):
+                lines.append(f'feature fixed_image F:{sid}.{bid}.Normal {x} {y} "assets/{sid}_{bid}_normal.png" ;')
             lines.append(f'feature fixed_image F:{sid}.{bid}.Selected {x} {y} "assets/{sid}_{bid}_selected.png" ;')
             lines.append(f'feature fixed_image F:{sid}.{bid}.Activated {x} {y} "assets/{sid}_{bid}_activated.png" ;')
         lines.append('')
