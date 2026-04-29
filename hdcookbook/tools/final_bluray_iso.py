@@ -188,12 +188,20 @@ def mkisofs_udf_command(root: Path) -> list[Path|str]|None:
     return None
 
 
+def sanitize_volume_id(value: str) -> str:
+    """Return a safe ISO/UDF volume ID for Blu-ray players and mkisofs."""
+    value = (value or '').strip() or 'BLURAY_PROJECT'
+    value = ''.join(ch if ch.isalnum() else '_' for ch in value.upper())
+    value = '_'.join(part for part in value.split('_') if part)
+    return (value or 'BLURAY_PROJECT')[:32]
+
+
 def make_iso(mkisofs_cmd: list[Path|str], disc_root: Path, iso_path: Path, volume_id: str):
     iso_path.parent.mkdir(parents=True, exist_ok=True)
     if iso_path.exists():
         iso_path.unlink()
 
-    cmd = [*mkisofs_cmd, '-iso-level', '3', '-udf', '-volid', volume_id[:32], '-o', iso_path, disc_root]
+    cmd = [*mkisofs_cmd, '-iso-level', '3', '-udf', '-volid', sanitize_volume_id(volume_id), '-o', iso_path, disc_root]
     try:
         run(cmd)
     except subprocess.CalledProcessError:
@@ -333,13 +341,14 @@ def main():
     ap = argparse.ArgumentParser(description='Assemble final Blu-ray BDMV tree and ISO from encoded videos + HD Cook Book menu overlay.')
     ap.add_argument('project_dir')
     ap.add_argument('--output-root', default=None)
-    ap.add_argument('--volume-id', default='BLURAY_PROJECT')
+    ap.add_argument('--volume-id', default=None, help='disc title / ISO volume label; sanitized to a 32-character volume ID')
     ap.add_argument('--allow-oversized', action='store_true', help='allow outputs above BD-25 bitrate guardrail')
     ap.add_argument('--no-iso', action='store_true', help='build final BDMV tree only')
     args = ap.parse_args()
 
     project = Path(args.project_dir).resolve()
     root = Path(__file__).resolve().parents[1]
+    volume_id = sanitize_volume_id(args.volume_id or project.name)
     output_root = Path(args.output_root).resolve() if args.output_root else project / 'build' / 'final-bluray'
     work = output_root / 'work'
     mux_work = work / 'muxed-titles'
@@ -440,6 +449,7 @@ def main():
         'project_dir': str(project),
         'disc_root': str(disc_root),
         'iso': str(iso_path) if not args.no_iso else None,
+        'volume_id': volume_id,
         'titles': summary,
         'total_stream_bytes': sum(x['size'] for x in summary),
     }
@@ -447,7 +457,7 @@ def main():
     (output_root / 'final-report.json').write_text(json.dumps(report, indent=2) + '\n')
 
     if not args.no_iso:
-        make_iso(mkisofs_cmd, disc_root, iso_path, args.volume_id)
+        make_iso(mkisofs_cmd, disc_root, iso_path, volume_id)
         report['iso_bytes'] = iso_path.stat().st_size
         (output_root / 'final-report.json').write_text(json.dumps(report, indent=2) + '\n')
 

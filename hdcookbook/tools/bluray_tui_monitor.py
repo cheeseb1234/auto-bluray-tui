@@ -70,6 +70,7 @@ def default_config():
         'quality': 'default',
         'nvenc_preset': 'p5',
         'audio_bitrate': '448k',
+        'disc_title': '',
         'disc_preset': 'bd25',
         'only': '',
         'smoke_seconds': '',
@@ -177,6 +178,7 @@ def build_encode_command(root: Path, project: Path, cfg: dict):
 
 def build_workflow_script(root: Path, project: Path, cfg: dict, state_file: Path):
     encode_cmd = ' '.join(shell_quote(x) for x in build_encode_command(root, project, cfg))
+    disc_title = (cfg.get('disc_title') or project.name).strip() or project.name
     scripts = root / 'scripts'
     project_q = shell_quote(project)
     state_q = shell_quote(state_file)
@@ -243,7 +245,7 @@ CURRENT_STEP=build-sample-disc
 run_step build-sample-disc {shell_quote(scripts / 'build-sample-disc.sh')}
 
 CURRENT_STEP=create-final-bluray-iso
-run_step create-final-bluray-iso {shell_quote(scripts / 'create-final-bluray-iso.sh')} "$PROJECT"
+run_step create-final-bluray-iso {shell_quote(scripts / 'create-final-bluray-iso.sh')} "$PROJECT" --volume-id {shell_quote(disc_title)}
 
 CURRENT_STEP=auto-burn-final-bluray
 update_state running auto-burn-final-bluray
@@ -820,6 +822,40 @@ def workflow_step_rows(workflow: dict, meta: dict):
     return rows
 
 
+def prompt_disc_title(stdscr, project: Path, cfg: dict):
+    """Ask at TUI startup for the disc title / ISO volume label."""
+    default = (cfg.get('disc_title') or '').strip() or project.name or 'Blu-ray Project'
+    try:
+        stdscr.nodelay(False)
+        curses.echo()
+        curses.curs_set(1)
+    except curses.error:
+        pass
+    stdscr.erase()
+    height, width = stdscr.getmaxyx()
+    safe_width = max(20, width - 4)
+    safe_add(stdscr, 1, 2, 'Auto Blu-ray TUI setup', safe_width, color('accent_bold', curses.A_BOLD))
+    safe_add(stdscr, 3, 2, 'Enter disc name / title for this Blu-ray.', safe_width)
+    safe_add(stdscr, 4, 2, 'This becomes the ISO/UDF volume label; blank uses the project folder name.', safe_width, color('dim'))
+    prompt = f'Disc title [{default}]: '
+    safe_add(stdscr, 6, 2, prompt, safe_width, color('info_bold', curses.A_BOLD))
+    stdscr.refresh()
+    try:
+        raw = stdscr.getstr(6, 2 + len(prompt), max(1, min(64, width - len(prompt) - 4)))
+        title = raw.decode(errors='ignore').strip()
+    except Exception:
+        title = ''
+    cfg['disc_title'] = title or default
+    save_config(project, cfg)
+    try:
+        curses.noecho()
+        curses.curs_set(0)
+        stdscr.nodelay(True)
+    except curses.error:
+        pass
+    return cfg
+
+
 def safe_add(stdscr, y, x, text, width, attr=curses.A_NORMAL):
     try:
         if y < 0 or x < 0:
@@ -838,8 +874,9 @@ def draw(stdscr, project: Path, root: Path):
     except curses.error:
         pass
     init_colors()
-    stdscr.nodelay(True)
     cfg = load_config(project)
+    cfg = prompt_disc_title(stdscr, project, cfg)
+    stdscr.nodelay(True)
     message = ''
     while True:
         rows, meta = collect(project, root)
@@ -889,7 +926,7 @@ def draw(stdscr, project: Path, root: Path):
         safe_add(stdscr, y, 0, f'Overall: {overall_text}  {meta.get("done_count",0)}/{meta.get("total_count",0)} done  {bar(30, overall)}', width - 1, color('ok_bold' if meta.get('done_count') == meta.get('total_count') else 'info_bold', curses.A_BOLD))
         y += 1
         opt_attr = color('ok' if cfg.get('disc_preset') == 'bd25' else 'warn')
-        safe_add(stdscr, y, 0, f'Options: disc={cfg.get("disc_preset","bd25")} encoder={cfg["encoder"]} resolution={cfg["resolution"]} quality={cfg["quality"]} nvenc_preset={cfg["nvenc_preset"]} audio={cfg["audio_bitrate"]} only={cfg.get("only") or "all"} smoke={cfg.get("smoke_seconds") or "off"}', width - 1, opt_attr)
+        safe_add(stdscr, y, 0, f'Title: {cfg.get("disc_title") or project.name} | Options: disc={cfg.get("disc_preset","bd25")} encoder={cfg["encoder"]} resolution={cfg["resolution"]} quality={cfg["quality"]} nvenc_preset={cfg["nvenc_preset"]} audio={cfg["audio_bitrate"]} only={cfg.get("only") or "all"} smoke={cfg.get("smoke_seconds") or "off"}', width - 1, opt_attr)
         y += 1
         workflow = meta.get('workflow') or read_workflow_state(project)
         if workflow:
