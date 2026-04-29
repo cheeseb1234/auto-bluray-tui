@@ -44,14 +44,13 @@ From the `hdcookbook/` directory:
 ./scripts/monitor-bluray-project.sh "/path/to/Blu-ray project"
 ```
 
+When the TUI opens, it runs an initial project/media analysis before the dashboard so you can see the video/subtitle inventory before choosing a workflow.
+
 In the TUI:
 
-- `w` starts full autopilot
-- `Enter` starts encode-only
-- `b` burns the final ISO to the selected burner
-- `v` cycles detected optical burners
-- `k` stops running encode/autopilot/burn work
-- `q` exits
+- **Actions:** `w` full autopilot, `Enter` encode media only, `b` burn the final ISO, `k` stop running work, `q` quit
+- **View/device:** `r` refresh/re-analyze if needed, `v` cycle detected optical burners
+- **Options:** `d` disc size, `e` encoder, `z` resolution, `l` quality, `p` NVENC preset, `a` audio bitrate, `o` encode only one video, `s` smoke-test length
 
 ## Project folder expectations
 

@@ -119,6 +119,10 @@ def workflow_log_path(project: Path):
     return workflow_dir(project) / 'autopilot.log'
 
 
+def media_manifest_path(project: Path):
+    return project / 'build' / 'bluray-media' / 'media-manifest.json'
+
+
 def final_iso_path(project: Path):
     return project / 'build' / 'final-bluray' / 'bluray-project.iso'
 
@@ -128,6 +132,45 @@ def video_files(project: Path):
         return sorted([p for p in project.iterdir() if p.suffix.lower() in SUPPORTED_VIDEO_EXTS], key=lambda p: p.name.lower())
     except Exception:
         return []
+
+
+def project_input_files(project: Path):
+    files = []
+    menu = project / 'menu.pptx'
+    if menu.exists():
+        files.append(menu)
+    files.extend(video_files(project))
+    try:
+        files.extend(sorted([p for p in project.iterdir() if p.suffix.lower() in ('.srt', '.sup', '.ass', '.ssa')], key=lambda p: p.name.lower()))
+    except Exception:
+        pass
+    return files
+
+
+def manifest_stale_reason(project: Path):
+    manifest = media_manifest_path(project)
+    if not manifest.exists():
+        return 'missing media manifest'
+    try:
+        manifest_mtime = manifest.stat().st_mtime
+        newest = max((p.stat().st_mtime for p in project_input_files(project)), default=0)
+        if newest > manifest_mtime + 1:
+            return 'project inputs changed since last analysis'
+    except Exception:
+        return 'could not verify media manifest freshness'
+    return ''
+
+
+def run_initial_analyze(root: Path, project: Path):
+    logs = project / 'build' / 'bluray-workflow'
+    logs.mkdir(parents=True, exist_ok=True)
+    log_path = logs / 'initial-analyze.log'
+    cmd = [str(root / 'scripts' / 'analyze-bluray-project.sh'), str(project)]
+    with log_path.open('ab') as log:
+        log.write(('\n=== TUI initial analyze {} ===\n'.format(time.strftime('%Y-%m-%d %H:%M:%S'))).encode())
+        log.write(('CMD: ' + ' '.join(cmd) + '\n').encode())
+        result = subprocess.run(cmd, cwd=str(root), stdout=log, stderr=subprocess.STDOUT)
+    return result.returncode, str(log_path)
 
 
 def project_diagnostics(project: Path, root: Path, rows=None, meta=None, cfg=None):
@@ -957,6 +1000,17 @@ def draw_diagnostics(stdscr, y, width, diagnostics, max_rows=5):
     return y
 
 
+def draw_controls(stdscr, y, width):
+    lines = [
+        'Actions: w Full autopilot (subtitles -> encode -> ISO -> burn) | Enter Encode media only | b Burn ISO | k Stop work | q Quit',
+        'View: r Refresh | v Cycle burner',
+        'Options: d Disc size | e Encoder | z Resolution | l Quality | p NVENC preset | a Audio | o Only one video | s Smoke test',
+    ]
+    for i, line in enumerate(lines):
+        safe_add(stdscr, y + i, 0, line, width - 1, color('dim') if i else curses.A_NORMAL)
+    return y + len(lines)
+
+
 def workflow_step_rows(workflow: dict, meta: dict):
     current = workflow.get('step') or ''
     status = workflow.get('status') or ''
@@ -1043,6 +1097,16 @@ def draw(stdscr, project: Path, root: Path):
     cfg = prompt_disc_title(stdscr, project, cfg)
     stdscr.nodelay(True)
     message = ''
+    reason = manifest_stale_reason(project)
+    if reason:
+        stdscr.erase()
+        height, width = stdscr.getmaxyx()
+        safe_add(stdscr, 1, 2, 'Analyzing project/media before showing the dashboard...', max(20, width - 4), color('info_bold', curses.A_BOLD))
+        safe_add(stdscr, 3, 2, f'Reason: {reason}', max(20, width - 4), color('dim'))
+        safe_add(stdscr, 5, 2, 'This gives you the video/subtitle inventory before choosing autopilot or encode-only.', max(20, width - 4))
+        stdscr.refresh()
+        rc, log = run_initial_analyze(root, project)
+        message = f'Initial analysis complete; log {log}' if rc == 0 else f'Initial analysis failed rc={rc}; log {log}'
     while True:
         rows, meta = collect(project, root)
         height, width = stdscr.getmaxyx()
@@ -1050,11 +1114,11 @@ def draw(stdscr, project: Path, root: Path):
         y = 0
         safe_add(stdscr, y, 0, f'Blu-ray Project Monitor | {project}', width - 1, color('accent_bold', curses.A_BOLD))
         y += 1
-        safe_add(stdscr, y, 0, 'q quit | r refresh | w autopilot | ENTER encode only | b burn ISO | v burner | k stop running | d/e/z/l/p/a/o/s options', width - 1)
-        y += 2
+        y = draw_controls(stdscr, y, width)
+        y += 1
 
         if not meta.get('manifest'):
-            safe_add(stdscr, y, 0, 'No media manifest yet. Press w for autopilot or run ./scripts/analyze-bluray-project.sh first.', width - 1, color('warn_bold', curses.A_BOLD))
+            safe_add(stdscr, y, 0, 'No media manifest yet. Initial analysis should have run; press r to retry display or w for full autopilot.', width - 1, color('warn_bold', curses.A_BOLD))
             y += 1
             y = draw_diagnostics(stdscr, y, width, meta.get('diagnostics') or [], max_rows=6)
             workflow = read_workflow_state(project)
@@ -1064,6 +1128,9 @@ def draw(stdscr, project: Path, root: Path):
             key = stdscr.getch()
             if key in (ord('q'), ord('Q')):
                 return
+            if key in (ord('r'), ord('R')):
+                rc, log = run_initial_analyze(root, project)
+                message = f'Initial analysis complete; log {log}' if rc == 0 else f'Initial analysis failed rc={rc}; log {log}'
             if key in (ord('w'), ord('W')):
                 workflow = read_workflow_state(project)
                 blockers = blocking_preflight_issues(project, root, cfg)
@@ -1170,6 +1237,12 @@ def draw(stdscr, project: Path, root: Path):
                 save_config(project, cfg)
                 return
             if key in (ord('r'), ord('R')):
+                reason = manifest_stale_reason(project)
+                if reason:
+                    rc, log = run_initial_analyze(root, project)
+                    message = f'Re-analysis complete; log {log}' if rc == 0 else f'Re-analysis failed rc={rc}; log {log}'
+                else:
+                    message = 'Refreshed; media analysis is current.'
                 break
             if key in (10, 13):
                 if running_rows(rows):

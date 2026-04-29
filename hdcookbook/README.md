@@ -57,16 +57,15 @@ Example:
 ./scripts/monitor-bluray-project.sh "/home/corey/.openclaw/Bluray project"
 ```
 
+When the TUI opens, it runs an initial project/media analysis before the dashboard so you can see the video/subtitle inventory before choosing a workflow.
+
 Main controls:
 
-- `w` — start full autopilot
-- `Enter` — encode only
-- `b` — burn final ISO to selected optical burner
-- `v` — cycle detected burners
-- `k` — stop running encode/autopilot/burn process
-- `q` — quit
+- **Actions:** `w` full autopilot, `Enter` encode media only, `b` burn final ISO, `k` stop running work, `q` quit
+- **View/device:** `r` refresh/re-analyze if needed, `v` cycle detected burners
+- **Options:** `d` disc size, `e` encoder, `z` resolution, `l` quality, `p` NVENC preset, `a` audio bitrate, `o` encode only one video, `s` smoke-test length
 
-The TUI shows color-highlighted status, per-step progress, per-video progress, final ISO readiness, and burner/media status.
+The TUI shows color-highlighted status, preflight diagnostics, per-step progress, per-video progress, final ISO readiness, and burner/media status.
 
 ## Outputs
 
