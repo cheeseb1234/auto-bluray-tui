@@ -90,7 +90,7 @@ Start with the walkthrough:
 
 Detailed workflow notes live here:
 
-[hdcookbook/docs/blu-ray-menu-authoring.md](https://github.com/cheeseb1234/auto-bluray-tui/blob/main/hdcookbook/docs/blu-ray-menu-authoring.md)
+[hdcookbook/docs/blu-ray-menu-authoring.md](https://github.com/cheeseb1234/auto-bluray-tui/blob/main/hdcookbook/docs/blu-ray-menu-authoring.md) 
 ```
 
 ## Credits / upstream heritage
