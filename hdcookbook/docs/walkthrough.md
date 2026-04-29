@@ -1,12 +1,10 @@
 # Auto Blu-ray TUI Walkthrough
 
-This walkthrough shows a typical Auto Blu-ray TUI project from source files to final ISO/burned disc.
+This walkthrough shows a typical Auto Blu-ray TUI project from source files to final ISO or burned disc.
 
-The screenshots below are mockups, but they match the intended workflow and naming rules.
+## 1. Create a project folder
 
-## 1. Create your project folder
-
-Put your PowerPoint menu, videos, and optional subtitles in one folder.
+Put the PowerPoint menu, videos, and optional subtitles in one folder.
 
 ![Mock project folder](assets/mock-project-folder.svg)
 
@@ -15,88 +13,70 @@ Example:
 ```text
 My Blu-ray Project/
 ├── menu.pptx
-├── Video 1.mkv
-├── Video 1.srt
-├── Video 2.mp4
-├── Video 2.srt
-├── Video 3.mkv
-├── Video 3.srt
-├── Video 4.mp4
-├── Video 4.srt
-└── Video 4 Spanish.srt
+├── Feature Film.mkv
+├── Feature Film.srt
+├── Bonus Feature.mp4
+├── Background 1.mp4
+└── Background 2.mp4
 ```
 
 Auto Blu-ray TUI writes generated files into `build/` inside this same project folder. Your original media files are not moved.
 
-## 2. Name PowerPoint buttons to match video files
+## 2. Build the menu in PowerPoint
 
-The important rule is simple:
+Design `menu.pptx` visually. The converter uses visible text and slide hyperlinks to decide what should happen.
 
-> A PowerPoint button becomes a video button when its visible text exactly matches a video filename **without the extension**, case-insensitively.
+### Video buttons
 
-Examples:
+A PowerPoint text box/button becomes a video button when its visible text matches a video filename stem. Matching is case-insensitive and also tolerates safe punctuation/metadata differences.
 
-| PowerPoint button text | Matches video file | Notes |
+| PowerPoint text | Matches video file | Notes |
 | --- | --- | --- |
-| `Video 1` | `Video 1.mkv` | Good |
-| `Video 2` | `Video 2.mp4` | Good |
-| `Feature Film` | `Feature Film.mkv` | Good |
-| `Play Feature Film` | `Feature Film.mkv` | Does **not** match unless the file is named `Play Feature Film.mkv` |
-| `Video 4` | `Video 4.mp4` | Sidecars like `Video 4 Spanish.srt` are still associated later |
+| `Feature Film` | `Feature Film.mkv` | Exact stem match |
+| `Just Friends` | `Just.Friends.2005.720p.mp4` | Safe partial/fuzzy match |
+| `Bonus Feature` | `Bonus Feature.mp4` | Exact stem match |
+| `Play Movie` | `Feature Film.mkv` | Does not match unless the file is renamed or the button text changes |
 
-The converter scans video files with these extensions:
+Supported source video extensions:
 
 ```text
 .mkv .mp4 .m2ts .mov
 ```
 
-It compares each PowerPoint text box/button against the video file stem:
+Generated video mappings are written to:
 
 ```text
-Video 1.mkv → stem is "Video 1"
+hdcookbook/xlets/grin_samples/Scripts/PptxMenu/video-actions.json
 ```
 
-So a PowerPoint text box labeled `Video 1` maps to `Video 1.mkv`.
-
-![Mock PowerPoint menu](assets/mock-pptx-menu.svg)
+The same video can appear on multiple slides; it reuses the same playlist/title ID.
 
 ### Slide navigation buttons
 
-PowerPoint hyperlinks to other slides are preserved as menu navigation buttons. For example, a `Next` button linked to slide 2 stays a menu navigation button.
+PowerPoint hyperlinks to other slides are preserved as menu navigation buttons. For example, a `Next` button linked to slide 2 stays a slide navigation button.
 
-### Video buttons
+### Autoplay looped slide video
 
-Text boxes whose labels match video file stems become video actions. During conversion, the project writes:
+To add motion to a menu slide, place a shape/text box where the video should appear and set its text to match a project video.
 
-```text
-xlets/grin_samples/Scripts/PptxMenu/video-actions.json
-```
-
-Example generated mapping:
-
-```json
-[
-  {
-    "slide": "slide2",
-    "button": "Video 1",
-    "video_file": "Video 1.mkv",
-    "playlist_id": "00001",
-    "title_number": 1,
-    "encoded_m2ts": "build/bluray-media/encoded/Video 1.m2ts"
-  }
-]
-```
-
-Playlist IDs are assigned in first-seen order:
+Names like these are treated as loop placeholders instead of clickable movie buttons:
 
 ```text
-Video 1 → 00001
-Video 2 → 00002
-Video 3 → 00003
-Video 4 → 00004
+Background 1
+Background 2
+Preview Loop
+Autoplay Intro
 ```
 
-If the same video appears on multiple slides, it reuses the same playlist ID.
+The converter composites each slide into a generated loop source under:
+
+```text
+build/pptx-menu-loops/
+```
+
+Loop videos play as the bottom layer. Buttons that overlap the loop are restored as separate normal-state graphics above the video, so the moving background does not cover menu controls.
+
+![Mock PowerPoint menu](assets/mock-pptx-menu.svg)
 
 ## 3. Install dependencies
 
@@ -120,21 +100,27 @@ The installer checks common dependencies such as ffmpeg, LibreOffice, Poppler, A
 ./scripts/monitor-bluray-project.sh "/path/to/My Blu-ray Project"
 ```
 
-Example:
-
-```bash
-./scripts/monitor-bluray-project.sh "/home/corey/.openclaw/Bluray project"
-```
+When the TUI opens, it runs an initial project/media analysis so the dashboard immediately shows the current inventory and preflight notes.
 
 Main controls:
 
 ```text
-w      start full autopilot
-Enter  encode only
+w      full autopilot: subtitles -> analyze -> menu -> encode -> ISO -> burn
+Enter  encode media only
 b      burn final ISO
+r      refresh/re-analyze if project inputs changed
 v      cycle detected optical burner
 k      stop running encode/autopilot/burn
 q      quit
+
+d      disc size: DVD-5 -> DVD-9 -> BD-25 -> quality/no cap
+e      encoder: auto -> nvenc -> cpu
+z      resolution
+l      quality
+p      NVENC preset
+a      AC-3 audio bitrate
+o      only one video / all videos
+s      smoke-test length
 ```
 
 ## 5. Start autopilot
@@ -143,31 +129,53 @@ Press `w`.
 
 The TUI works through these steps:
 
-1. analyze project/media
-2. process `menu.pptx`
-3. check/install tsMuxer
-4. encode Blu-ray media
-5. create authoring plan
-6. build BD-J menu overlay
-7. assemble final ISO
-8. auto-burn first disc if a suitable blank disc is detected
+1. fetch missing subtitles from OpenSubtitles when credentials are available
+2. analyze project/media and refresh the manifest
+3. process `menu.pptx`
+4. check/install tsMuxer
+5. encode Blu-ray media
+6. create the authoring/playlist plan
+7. build the BD-J menu overlay
+8. assemble the final ISO
+9. auto-burn the first disc if a suitable blank disc is detected
 
 ![Mock TUI autopilot](assets/mock-tui-autopilot.svg)
 
-## 6. Encoding and BD-25 sizing
+## 6. Disc size choices
 
-For BD-25 output, the TUI defaults to:
+Use `d` in the TUI to cycle the disc target:
+
+| Target | Typical use | Behavior |
+| --- | --- | --- |
+| `DVD-5` | small AVCHD-style image | lower video bitrate, 192k AC-3 |
+| `DVD-9` | dual-layer DVD-sized image | medium bitrate, 256k AC-3 |
+| `BD-25` | common single-layer Blu-ray | Blu-ray-sized bitrate, 448k AC-3 |
+| `quality/no cap` | larger discs/testing | CRF/CQ quality mode without size target |
+
+The final ISO is size-checked against the selected target unless `--allow-oversized` is used from the CLI.
+
+## 7. Subtitles
+
+Sidecar subtitles are detected when named like the video:
 
 ```text
-disc=bd25
-encoder=auto
+Feature Film.mkv
+Feature Film.srt
+Feature Film Spanish.srt
 ```
 
-`encoder=auto` uses NVIDIA NVENC when available and falls back to CPU otherwise.
+If sidecars are missing, autopilot can try OpenSubtitles before media analysis. Set:
 
-The workflow rejects existing encodes that are too large for BD-25. Good existing encodes are skipped, so reruns do not waste time.
+```bash
+export OPENSUBTITLES_API_KEY='your-api-key'
+export OPENSUBTITLES_USERNAME='your-username'
+export OPENSUBTITLES_PASSWORD='your-password'
+export OPENSUBTITLES_LANGUAGE='en'   # optional
+```
 
-## 7. Final outputs
+Without credentials, lookup is skipped safely and the TUI shows an informational note.
+
+## 8. Final outputs
 
 When successful, the project folder contains:
 
@@ -184,41 +192,49 @@ Final ISO:
 build/final-bluray/bluray-project.iso
 ```
 
-## 8. Burn the disc
+## 9. Burn the disc
 
 If a blank disc is inserted and large enough, autopilot burns the first disc automatically.
 
-You can also burn manually from the TUI:
+Manual repeat burns:
 
-1. insert a blank BD-R/BD-RE
+1. insert a blank BD-R/BD-RE or suitable target media
 2. press `v` if you need to choose a different burner
 3. press `b` to burn
 4. when it ejects, insert another blank disc and press `b` again, or press `q` to exit
 
 ![Mock burn ready screen](assets/mock-burn-ready.svg)
 
-## Troubleshooting naming problems
+## Troubleshooting naming/menu problems
 
 If a PowerPoint video button does not work, check these first:
 
-- Does the button text exactly match the video filename stem?
+- Does the button text match the intended video filename stem closely enough?
 - Is the video file in the same project folder as `menu.pptx`?
 - Is the video extension one of `.mkv`, `.mp4`, `.m2ts`, or `.mov`?
 - Did LibreOffice successfully convert the PowerPoint?
 - Check generated `video-actions.json` to confirm the mapping.
+- If a loop video covers buttons, rerun with the latest converter; overlapping buttons should get normal-state overlays above the loop layer.
 
 Good:
 
 ```text
-Button text: Feature 1
-Video file:  Feature 1.mkv
+Button text: Feature Film
+Video file:  Feature Film.mkv
+```
+
+Also acceptable when unambiguous:
+
+```text
+Button text: Just Friends
+Video file:  Just.Friends.2005.720p.mp4
 ```
 
 Bad:
 
 ```text
-Button text: Play Feature 1
-Video file:  Feature 1.mkv
+Button text: Play Feature
+Video file:  Feature Film.mkv
 ```
 
-Fix either by changing the button text to `Feature 1` or renaming the file to `Play Feature 1.mkv`.
+Fix either by changing the button text or renaming the file.

@@ -14,7 +14,7 @@ Auto Blu-ray TUI guides the whole disc-building process from one dashboard:
 2. converts `menu.pptx` into a Blu-ray menu structure
 3. prepares Blu-ray-compatible H.264 + AC-3 `.m2ts` media
 4. uses NVIDIA NVENC automatically when available, with CPU fallback
-5. targets BD-25 sizing so the finished project fits common 25 GB Blu-ray media
+5. targets DVD-5, DVD-9, BD-25, or quality/no-cap output depending on the selected disc preset
 6. builds the HD Cook Book BD-J menu overlay
 7. muxes titles into Blu-ray `STREAM`, `CLIPINF`, and `PLAYLIST` assets
 8. assembles a final Blu-ray ISO
@@ -30,7 +30,7 @@ Benefits:
 - **PowerPoint-first menus** — build menu screens in a familiar editor instead of hand-authoring every layout. Shapes whose text matches a video, such as `Background 1`, can become autoplaying looped video regions on that slide.
 - **One-command workflow** — launch the TUI and let autopilot work through the steps.
 - **GPU acceleration** — uses RTX/NVENC automatically when available.
-- **BD-25 guardrails** — rejects oversized encodes instead of silently creating an ISO that will not fit.
+- **Disc-size guardrails** — targets DVD-5, DVD-9, or BD-25 and rejects oversized encodes/ISOs instead of silently creating output that will not fit.
 - **Resume-friendly behavior** — skips acceptable existing encodes and adopts already-running ffmpeg jobs when relaunched.
 - **Visible progress** — color status, per-step progress bars, per-video progress, ISO readiness, and burner status.
 - **Disc burning loop** — burn the finished ISO, insert another blank disc, burn again, or exit.
@@ -96,13 +96,11 @@ build/final-bluray/bluray-project.iso
 
 Start with the walkthrough:
 
-[hdcookbook/docs/walkthrough.md](https://github.com/cheeseb1234/auto-bluray-tui/blob/main/hdcookbook/docs/walkthrough.md)
-```
+- [hdcookbook/docs/walkthrough.md](https://github.com/cheeseb1234/auto-bluray-tui/blob/main/hdcookbook/docs/walkthrough.md)
 
 Detailed workflow notes live here:
 
-[hdcookbook/docs/blu-ray-menu-authoring.md](https://github.com/cheeseb1234/auto-bluray-tui/blob/main/hdcookbook/docs/blu-ray-menu-authoring.md) 
-```
+- [hdcookbook/docs/blu-ray-menu-authoring.md](https://github.com/cheeseb1234/auto-bluray-tui/blob/main/hdcookbook/docs/blu-ray-menu-authoring.md)
 
 ## Credits / upstream heritage
 

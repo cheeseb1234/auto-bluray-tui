@@ -12,7 +12,7 @@ The TUI/autopilot workflow can:
 2. process `menu.pptx` into generated GRIN menu assets, including autoplaying looped slide-video regions from shapes whose text matches video files
 3. encode Blu-ray-compatible H.264 + AC-3 `.m2ts` files
 4. use NVIDIA NVENC/RTX acceleration automatically when available
-5. enforce BD-25 sizing guardrails
+5. enforce DVD-5, DVD-9, and BD-25 sizing guardrails
 6. skip existing acceptable encodes instead of wasting time
 7. build the HD Cook Book BD-J menu overlay
 8. mux final Blu-ray title assets
@@ -98,7 +98,7 @@ Video 4.mp4
 Video 4.srt
 ```
 
-PowerPoint button labels like `Video 1`, `Video 2`, etc. are mapped to matching media files.
+PowerPoint button labels like `Video 1`, `Video 2`, etc. are mapped to matching media files. Large/unlinked shapes named like background videos, such as `Background 1`, become bottom-layer autoplay loop regions; overlapping buttons are kept above the loop video.
 
 If a video has no matching sidecar subtitle, autopilot can try OpenSubtitles before media analysis. Set `OPENSUBTITLES_API_KEY`, `OPENSUBTITLES_USERNAME`, and `OPENSUBTITLES_PASSWORD` in the environment; optional `OPENSUBTITLES_LANGUAGE` defaults to `en`. If credentials are missing, the lookup is skipped safely and the TUI reports it as an informational preflight note.
 
