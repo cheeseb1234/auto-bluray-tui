@@ -27,8 +27,17 @@ def read_rels(z, path):
     return {r.attrib['Id']: r.attrib for r in root}
 
 
+def match_key(s: str) -> str:
+    """Normalize labels/filenames enough for PPTX text to match media files."""
+    return re.sub(r'[^a-z0-9]+', ' ', s.lower()).strip()
+
+
 def extract_slide_model(pptx: Path, project_dir: Path):
-    videos = {p.stem.lower(): p.name for p in project_dir.iterdir() if p.suffix.lower() in ('.mp4','.mkv','.m2ts','.mov')}
+    videos = {}
+    for p in project_dir.iterdir():
+        if p.suffix.lower() in ('.mp4','.mkv','.m2ts','.mov'):
+            videos[p.stem.lower()] = p.name
+            videos.setdefault(match_key(p.stem), p.name)
     subtitles = [p.name for p in project_dir.iterdir() if p.suffix.lower() in ('.srt','.sup','.ass','.ssa')]
     with zipfile.ZipFile(pptx) as z:
         pres = ET.fromstring(z.read('ppt/presentation.xml'))
@@ -62,7 +71,7 @@ def extract_slide_model(pptx: Path, project_dir: Path):
                     elif rid and rid in rels and rels[rid]['Type'].endswith('/slide'):
                         m=re.search(r'slide(\d+)\.xml', rels[rid]['Target'])
                         if m: link={'kind':'slide','target':f'slide{m.group(1)}'}
-                video_name = videos.get(text.lower())
+                video_name = videos.get(text.lower()) or videos.get(match_key(text))
                 if link or video_name:
                     buttons.append({
                         'id': ident(text), 'label': text, 'rect_emu': rect,
