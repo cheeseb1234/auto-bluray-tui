@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import json, re, shutil, subprocess, sys, tempfile, zipfile, xml.etree.ElementTree as ET
+import difflib, json, re, shutil, subprocess, sys, tempfile, zipfile, xml.etree.ElementTree as ET
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
@@ -32,6 +32,57 @@ def match_key(s: str) -> str:
     return re.sub(r'[^a-z0-9]+', ' ', s.lower()).strip()
 
 
+NOISE_WORDS = {
+    '4k', 'uhd', '1080p', '720p', 'bluray', 'blu', 'ray', 'bd', 'remux',
+    'x264', 'x265', 'h264', 'h265', 'hevc', 'aac', 'ac3', 'dts', 'truehd',
+    'proper', 'repack', 'extended', 'theatrical', 'despecialized', 'edition',
+}
+
+
+def relaxed_key(s: str) -> str:
+    """A looser key for safe auto-correction of common filename/label drift."""
+    words = [w for w in match_key(s).split() if w not in NOISE_WORDS]
+    return ' '.join(words)
+
+
+def unique_id(base: str, used: set[str]) -> str:
+    candidate = ident(base)
+    if candidate not in used:
+        used.add(candidate)
+        return candidate
+    i = 2
+    while f'{candidate}_{i}' in used:
+        i += 1
+    candidate = f'{candidate}_{i}'
+    used.add(candidate)
+    return candidate
+
+
+def find_video_match(label: str, videos: dict[str, str]):
+    """Return (filename, note) for a PPTX label, with conservative autocorrection."""
+    exact = videos.get(label.lower()) or videos.get(match_key(label))
+    if exact:
+        return exact, None
+
+    relaxed = relaxed_key(label)
+    relaxed_hits = sorted({name for key, name in videos.items() if relaxed and relaxed_key(key) == relaxed})
+    if len(relaxed_hits) == 1:
+        return relaxed_hits[0], f'relaxed label match: "{label}" -> "{relaxed_hits[0]}"'
+
+    keys = [k for k in videos.keys() if k]
+    scored = []
+    for key in keys:
+        score = max(
+            difflib.SequenceMatcher(None, match_key(label), key).ratio(),
+            difflib.SequenceMatcher(None, relaxed, relaxed_key(key)).ratio() if relaxed else 0,
+        )
+        scored.append((score, key, videos[key]))
+    scored.sort(reverse=True)
+    if scored and scored[0][0] >= 0.88 and (len(scored) == 1 or scored[0][0] - scored[1][0] >= 0.08):
+        return scored[0][2], f'fuzzy label match: "{label}" -> "{scored[0][2]}" ({scored[0][0]:.2f})'
+    return None, None
+
+
 def extract_slide_model(pptx: Path, project_dir: Path):
     videos = {}
     for p in project_dir.iterdir():
@@ -45,10 +96,12 @@ def extract_slide_model(pptx: Path, project_dir: Path):
         src_w, src_h = int(size['cx']), int(size['cy'])
         slide_names = sorted([n for n in z.namelist() if re.match(r'ppt/slides/slide\d+\.xml$', n)], key=lambda n:int(re.search(r'(\d+)', n).group(1)))
         slides=[]
+        match_warnings=[]
         for idx, slide_path in enumerate(slide_names, 1):
             root=ET.fromstring(z.read(slide_path))
             rels=read_rels(z, f'ppt/slides/_rels/slide{idx}.xml.rels')
             buttons=[]
+            used_ids=set()
             title=None
             texts=[]
             for sp in root.findall('.//p:sp', NS):
@@ -71,16 +124,18 @@ def extract_slide_model(pptx: Path, project_dir: Path):
                     elif rid and rid in rels and rels[rid]['Type'].endswith('/slide'):
                         m=re.search(r'slide(\d+)\.xml', rels[rid]['Target'])
                         if m: link={'kind':'slide','target':f'slide{m.group(1)}'}
-                video_name = videos.get(text.lower()) or videos.get(match_key(text))
+                video_name, match_note = find_video_match(text, videos)
+                if match_note:
+                    match_warnings.append({'slide': f'slide{idx}', 'label': text, 'message': match_note})
                 if link or video_name:
                     buttons.append({
-                        'id': ident(text), 'label': text, 'rect_emu': rect,
+                        'id': unique_id(text, used_ids), 'label': text, 'rect_emu': rect,
                         'action': link or {'kind':'video','target': video_name}
                     })
                 if title is None and not link and not video_name:
                     title=text
             slides.append({'id':f'slide{idx}', 'title':title or f'Slide {idx}', 'texts':texts, 'buttons':buttons})
-    return {'source': str(pptx), 'slides': slides, 'source_size_emu':[src_w,src_h], 'videos': videos, 'subtitles': subtitles}
+    return {'source': str(pptx), 'slides': slides, 'source_size_emu':[src_w,src_h], 'videos': videos, 'subtitles': subtitles, 'match_warnings': match_warnings}
 
 
 def assign_video_actions(model):
@@ -131,6 +186,22 @@ def draw_overlays(model, assets: Path, target=(1920,1080)):
         for btn in slide['buttons']:
             r=btn['rect_emu']
             x,y,w,h = round(r['x']*sx), round(r['y']*sy), round(r['w']*sx), round(r['h']*sy)
+            # PowerPoint text boxes can report a very thin shape even when the
+            # rendered text is much taller.  Inflate tiny hitboxes/overlays so
+            # remote/mouse activation and selection highlights remain usable.
+            min_w, min_h = 48, 36
+            if w < min_w:
+                grow = min_w - w
+                x -= grow // 2
+                w = min_w
+            if h < min_h:
+                grow = min_h - h
+                y -= grow // 2
+                h = min_h
+            x = max(0, min(target[0] - 1, x))
+            y = max(0, min(target[1] - 1, y))
+            w = max(1, min(target[0] - x, w))
+            h = max(1, min(target[1] - y, h))
             btn['rect_px']={'x':x,'y':y,'w':w,'h':h}
             for state, outline in [('selected',(255,255,255,245)),('activated',(64,255,170,255))]:
                 pad=8
@@ -204,14 +275,18 @@ def generate_show(model, out: Path):
         '    import com.hdcookbook.grin.Show;',
         '    import com.hdcookbook.grin.util.Debug;',
         '    import javax.media.Control;',
+        '    import javax.media.ControllerEvent;',
+        '    import javax.media.ControllerListener;',
+        '    import javax.media.EndOfMediaEvent;',
         '    import javax.media.Manager;',
         '    import javax.media.Player;',
         '    import org.bluray.media.PlayListChangeControl;',
         '    import org.bluray.net.BDLocator;',
         '    import org.davic.media.MediaLocator;',
-        '    public class PptxMenuCommands extends com.hdcookbook.grin.GrinXHelper {',
+        '    public class PptxMenuCommands extends com.hdcookbook.grin.GrinXHelper implements ControllerListener {',
         '        private static Player player;',
         '        private static PlayListChangeControl playlistControl;',
+        '        private static String returnSegment = "S:Initialize";',
         '        public PptxMenuCommands(Show show) { super(show); }',
         '        public static synchronized void stopVideo() {',
         '            Debug.println("PPTX_MENU_STOP");',
@@ -222,13 +297,15 @@ def generate_show(model, out: Path):
         '                if (Debug.LEVEL > 0) { Debug.printStackTrace(t); }',
         '            }',
         '        }',
-        '        public synchronized void playVideo(String videoFile, String playlistId) {',
+        '        public synchronized void playVideo(String videoFile, String playlistId, String menuSegment) {',
         '            Debug.println("PPTX_MENU_PLAY video=" + videoFile + " playlist=" + playlistId);',
         '            try {',
+        '                returnSegment = menuSegment;',
         '                GrinDriverXlet.hideMenuGraphics();',
         '                BDLocator loc = new BDLocator("bd://1.PLAYLIST:" + playlistId);',
         '                if (player == null) {',
         '                    player = Manager.createPlayer(new MediaLocator(loc));',
+        '                    player.addControllerListener(this);',
         '                    player.prefetch();',
         '                    Control[] controls = player.getControls();',
         '                    for (int i = 0; i < controls.length; i++) {',
@@ -242,12 +319,20 @@ def generate_show(model, out: Path):
         '                } else {',
         '                    player.stop();',
         '                    player = Manager.createPlayer(new MediaLocator(loc));',
+        '                    player.addControllerListener(this);',
         '                    player.prefetch();',
         '                }',
         '                player.start();',
         '            } catch (Throwable t) {',
         '                Debug.println("PPTX_MENU_PLAY_FAILED video=" + videoFile + " playlist=" + playlistId);',
         '                if (Debug.LEVEL > 0) { Debug.printStackTrace(t); }',
+        '            }',
+        '        }',
+        '        public void controllerUpdate(ControllerEvent event) {',
+        '            if (event instanceof EndOfMediaEvent) {',
+        '                Debug.println("PPTX_MENU_END_RETURN segment=" + returnSegment);',
+        '                try { if (player != null) { player.stop(); } } catch (Throwable ignored) { }',
+        '                GrinDriverXlet.showMenuSegment(returnSegment);',
         '            }',
         '        }',
         '        JAVA_COMMAND_BODY',
@@ -303,7 +388,7 @@ def generate_show(model, out: Path):
             else:
                 video=act['target'].replace('\\', '\\\\').replace('"', '\\"')
                 playlist=act.get('playlist_id', '00000')
-                lines.append(f"        {bid} {bid}_activated {{ activate_segment S:VideoPlayback ; sync_display ; java_command [[ playVideo(\"{video}\", \"{playlist}\"); ]] }}")
+                lines.append(f"        {bid} {bid}_activated {{ activate_segment S:VideoPlayback ; sync_display ; java_command [[ playVideo(\"{video}\", \"{playlist}\", \"S:{sid}\"); ]] }}")
         lines += ['    }','    mouse {']
         for btn in buttons:
             r=btn['rect_px']; lines.append(f"        {btn['id']} ( {r['x']} {r['y']} {r['x']+r['w']} {r['y']+r['h']} )")

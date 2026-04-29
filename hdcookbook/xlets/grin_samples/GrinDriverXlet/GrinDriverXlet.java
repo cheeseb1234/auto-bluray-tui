@@ -167,13 +167,19 @@ public class GrinDriverXlet implements Xlet, AnimationContext, UserEventListener
 
         public static void showTopMenu() {
             if (instance != null && instance.rootContainer != null) {
-                instance.rootContainer.setVisible(true);
                 try {
                     Class commands = Class.forName("PptxMenuCommands");
                     commands.getMethod("stopVideo", new Class[0]).invoke(null, new Object[0]);
                 } catch (Throwable ignored) {
                     // Generated command class may not be loaded yet.
                 }
+                showMenuSegment("S:Initialize");
+            }
+        }
+
+        public static void showMenuSegment(String segmentName) {
+            if (instance != null && instance.rootContainer != null) {
+                instance.rootContainer.setVisible(true);
                 try {
                     Component c = instance.animationEngine.getComponent();
                     if (c != null) {
@@ -185,7 +191,10 @@ public class GrinDriverXlet implements Xlet, AnimationContext, UserEventListener
                 instance.menuVisible = true;
                 instance.rootContainer.requestFocus();
                 if (instance.show != null) {
-                    instance.show.activateSegment(instance.show.getSegment("S:Initialize"));
+                    if (segmentName == null || segmentName.length() == 0) {
+                        segmentName = "S:Initialize";
+                    }
+                    instance.show.activateSegment(instance.show.getSegment(segmentName));
                 }
             }
         }

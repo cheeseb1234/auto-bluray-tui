@@ -12,12 +12,18 @@ import signal
 import re
 from pathlib import Path
 
+try:
+    import pptx_menu_converter
+except Exception:
+    pptx_menu_converter = None
+
 ENCODERS = ['auto', 'nvenc', 'cpu']
 RESOLUTIONS = ['1920x1080', '1280x720']
 QUALITIES = [('high', 16), ('default', 18), ('smaller', 21)]
 NVENC_PRESETS = ['p4', 'p5', 'p6', 'p7']
 AUDIO_BITRATES = ['448k', '640k']
 DISC_PRESETS = ['bd25', 'quality']
+SUPPORTED_VIDEO_EXTS = ('.mp4', '.mkv', '.m2ts', '.mov')
 
 WORKFLOW_STEPS = [
     ('analyze', 'Analyze project/media'),
@@ -114,6 +120,104 @@ def workflow_log_path(project: Path):
 
 def final_iso_path(project: Path):
     return project / 'build' / 'final-bluray' / 'bluray-project.iso'
+
+
+def video_files(project: Path):
+    try:
+        return sorted([p for p in project.iterdir() if p.suffix.lower() in SUPPORTED_VIDEO_EXTS], key=lambda p: p.name.lower())
+    except Exception:
+        return []
+
+
+def project_diagnostics(project: Path, root: Path, rows=None, meta=None, cfg=None):
+    """Return practical TUI preflight issues and auto-corrections.
+
+    Keep this lightweight: it parses PPTX XML and existing JSON/log state, but it
+    does not run LibreOffice, ffmpeg, muxing, or disc probes.
+    """
+    rows = rows or []
+    meta = meta or {}
+    issues = []
+
+    def add(severity, message, fix=''):
+        issues.append({'severity': severity, 'message': message, 'fix': fix})
+
+    menu = project / 'menu.pptx'
+    vids = video_files(project)
+    if not menu.exists():
+        add('error', 'Missing menu.pptx in the project folder.', 'Add/export the PowerPoint menu as menu.pptx.')
+    if not vids:
+        add('error', 'No supported video files found beside menu.pptx.', 'Use .mkv, .mp4, .m2ts, or .mov files in the project folder.')
+
+    normalized = {}
+    for p in vids:
+        k = pptx_menu_converter.match_key(p.stem) if pptx_menu_converter else re.sub(r'[^a-z0-9]+', ' ', p.stem.lower()).strip()
+        normalized.setdefault(k, []).append(p.name)
+    dupes = [names for names in normalized.values() if len(names) > 1]
+    if dupes:
+        add('warning', 'Some video filenames normalize to the same title, which can make button matching ambiguous.', 'Rename one of: ' + '; '.join(', '.join(d) for d in dupes[:3]))
+
+    model = None
+    if menu.exists() and vids and pptx_menu_converter:
+        try:
+            model = pptx_menu_converter.extract_slide_model(menu, project)
+            pptx_menu_converter.assign_video_actions(model)
+            slides = model.get('slides') or []
+            buttons = [b for s in slides for b in s.get('buttons', [])]
+            actions = model.get('video_actions') or []
+            if not slides:
+                add('error', 'menu.pptx contains no slides.', 'Add at least one slide with video buttons.')
+            if not buttons:
+                add('error', 'No clickable PPTX menu buttons were detected.', 'Use button text that matches a video name or add slide hyperlinks.')
+            if not actions:
+                add('error', 'No PPTX buttons match any video files.', 'Rename button text to match video filenames; fuzzy/space/punctuation fixes are automatic when safe.')
+            targets = {a.get('video_file') for a in actions}
+            missing_targets = sorted(t for t in targets if t and not (project / t).exists())
+            if missing_targets:
+                add('error', 'PPTX menu points at video files that are missing.', 'Missing: ' + ', '.join(missing_targets[:6]))
+            unused = sorted({p.name for p in vids} - {t for t in targets if t})
+            if unused and actions:
+                add('warning', 'Some project videos are not reachable from the PPTX menu.', 'Unreferenced: ' + ', '.join(unused[:6]))
+            for warn in model.get('match_warnings') or []:
+                add('info', warn.get('message', 'Auto-corrected a menu/video filename match.'), 'Review generated video-actions.json if this was unexpected.')
+        except Exception as e:
+            add('error', f'Could not parse menu.pptx for preflight checks: {e}', 'Open/re-save the PPTX, then retry.')
+    elif menu.exists() and vids and not pptx_menu_converter:
+        add('warning', 'PPTX preflight parser could not be loaded.', 'Run the converter step to reveal menu issues.')
+
+    for row in rows:
+        status = row.get('status')
+        if status == 'partial':
+            add('error', f'{row.get("file")} appears partially encoded.', 'Re-run encode/autopilot; existing partial outputs will be replaced when needed.')
+        elif status == 'oversized':
+            add('error', f'{row.get("file")} is too large for BD-25 settings.', 'Use disc=bd25 and re-encode.')
+        elif status == 'stale':
+            add('warning', f'{row.get("file")} has a stale encoder PID.', 'Press k to clear running state, then rerun encode/autopilot.')
+
+    workflow = meta.get('workflow') or read_workflow_state(project)
+    if workflow.get('pid') and workflow.get('status') == 'running' and not pid_running(workflow.get('pid')):
+        add('warning', f'Autopilot state is stale at step {workflow.get("step")}.', 'The TUI will treat it as stopped; press w to rerun safely.')
+
+    iso = final_iso_path(project)
+    report = project / 'build' / 'final-bluray' / 'final-report.json'
+    if iso.exists() and menu.exists() and iso.stat().st_mtime < menu.stat().st_mtime:
+        add('warning', 'The final ISO is older than menu.pptx.', 'Rebuild the final ISO before burning.')
+    if model and report.exists():
+        try:
+            report_data = read_json(report) or {}
+            report_titles = {t.get('video_file') for t in report_data.get('titles', [])}
+            expected_titles = {a.get('video_file') for a in model.get('video_actions', [])}
+            if expected_titles and report_titles and report_titles != expected_titles:
+                add('warning', 'The final report does not match the current PPTX video actions.', 'Rebuild final ISO; playlist map may be stale.')
+        except Exception:
+            pass
+
+    return issues
+
+
+def blocking_preflight_issues(project: Path, root: Path, cfg: dict):
+    issues = project_diagnostics(project, root, [], {}, cfg)
+    return [i for i in issues if i.get('severity') == 'error']
 
 
 def burn_dir(project: Path):
@@ -221,6 +325,19 @@ run_step analyze {shell_quote(scripts / 'analyze-bluray-project.sh')} "$PROJECT"
 
 CURRENT_STEP=convert-pptx-menu
 run_step convert-pptx-menu {shell_quote(scripts / 'convert-pptx-menu.sh')} "$PROJECT"
+python3 - "$ROOT" <<'PY'
+import json, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+actions_path = root / 'xlets/grin_samples/Scripts/PptxMenu/video-actions.json'
+try:
+    actions = json.loads(actions_path.read_text())
+except Exception as e:
+    raise SystemExit(f'Could not read generated video actions: {{e}}')
+if not actions:
+    raise SystemExit('No PPTX video buttons matched project videos; fix button text or filenames before encoding/burning')
+print(f'Preflight video actions: {{len(actions)}} matched button(s)')
+PY
 
 if [[ ! -x {shell_quote(ts_muxer)} ]] && ! command -v tsMuxer >/dev/null 2>&1 && ! command -v tsMuxeR >/dev/null 2>&1 && ! command -v tsmuxer >/dev/null 2>&1; then
   CURRENT_STEP=get-tsmuxer
@@ -647,7 +764,9 @@ def collect(project: Path, root: Path):
     manifest = read_json(media_root / 'media-manifest.json')
     cfg = load_config(project)
     if not manifest:
-        return [], {'manifest': False, 'media_root': str(media_root)}
+        meta = {'manifest': False, 'media_root': str(media_root)}
+        meta['diagnostics'] = project_diagnostics(project, root, [], meta, cfg)
+        return [], meta
 
     rows = []
     for item in manifest.get('videos', []):
@@ -731,13 +850,15 @@ def collect(project: Path, root: Path):
     burners = detect_burners()
     burn = read_burn_state(project)
     iso = final_iso_path(project)
-    return rows, {
+    meta = {
         'manifest': True, 'media_root': str(media_root), 'tools': tool_status(root),
         'overall_percent': overall_percent, 'done_count': done_count, 'total_count': len(rows),
         'workflow': workflow, 'burners': burners, 'selected_burner': selected_burner(project, burners),
         'burn': burn, 'final_iso': str(iso), 'final_iso_exists': iso.exists(),
         'final_iso_size': iso.stat().st_size if iso.exists() else None,
     }
+    meta['diagnostics'] = project_diagnostics(project, root, rows, meta, cfg)
+    return rows, meta
 
 
 def bar(width: int, percent):
@@ -790,6 +911,34 @@ def status_attr(status):
     if status in ('partial', 'smoke', 'stale'):
         return color('warn_bold', curses.A_BOLD)
     return curses.A_NORMAL
+
+
+def diagnostic_attr(severity):
+    if severity == 'error':
+        return color('bad_bold', curses.A_BOLD)
+    if severity == 'warning':
+        return color('warn_bold', curses.A_BOLD)
+    return color('info')
+
+
+def draw_diagnostics(stdscr, y, width, diagnostics, max_rows=5):
+    if not diagnostics:
+        safe_add(stdscr, y, 0, 'Preflight: ok - naming/menu/navigation/ISO checks passed', width - 1, color('ok'))
+        return y + 1
+    errors = sum(1 for i in diagnostics if i.get('severity') == 'error')
+    warnings = sum(1 for i in diagnostics if i.get('severity') == 'warning')
+    safe_add(stdscr, y, 0, f'Preflight: {errors} error(s), {warnings} warning(s)  (autocorrect handles safe naming, hitbox, navigation-grid, slide-count, stale-map issues)', width - 1, color('bad_bold' if errors else 'warn_bold'))
+    y += 1
+    for issue in diagnostics[:max_rows]:
+        msg = issue.get('message', '')
+        fix = issue.get('fix') or ''
+        text = f'  {issue.get("severity", "info")}: {msg}' + (f' | {fix}' if fix else '')
+        safe_add(stdscr, y, 0, text, width - 1, diagnostic_attr(issue.get('severity')))
+        y += 1
+    if len(diagnostics) > max_rows:
+        safe_add(stdscr, y, 0, f'  ... {len(diagnostics) - max_rows} more preflight item(s)', width - 1, color('dim'))
+        y += 1
+    return y
 
 
 def workflow_step_rows(workflow: dict, meta: dict):
@@ -891,6 +1040,7 @@ def draw(stdscr, project: Path, root: Path):
         if not meta.get('manifest'):
             safe_add(stdscr, y, 0, 'No media manifest yet. Press w for autopilot or run ./scripts/analyze-bluray-project.sh first.', width - 1, color('warn_bold', curses.A_BOLD))
             y += 1
+            y = draw_diagnostics(stdscr, y, width, meta.get('diagnostics') or [], max_rows=6)
             workflow = read_workflow_state(project)
             if workflow:
                 safe_add(stdscr, y, 0, f'Autopilot: {workflow.get("status", "-")} step={workflow.get("step", "-")} pid={workflow.get("pid") or "-"} log={workflow.get("log_file", workflow_log_path(project))}', width - 1)
@@ -900,7 +1050,10 @@ def draw(stdscr, project: Path, root: Path):
                 return
             if key in (ord('w'), ord('W')):
                 workflow = read_workflow_state(project)
-                if workflow.get('pid') and workflow.get('status') == 'running' and pid_running(workflow.get('pid')):
+                blockers = blocking_preflight_issues(project, root, cfg)
+                if blockers:
+                    message = 'Preflight blocked autopilot: ' + blockers[0].get('message', 'fix project inputs first')
+                elif workflow.get('pid') and workflow.get('status') == 'running' and pid_running(workflow.get('pid')):
                     message = f'Autopilot already running PID {workflow.get("pid")}; log {workflow.get("log_file")}'
                 else:
                     try:
@@ -928,6 +1081,7 @@ def draw(stdscr, project: Path, root: Path):
         opt_attr = color('ok' if cfg.get('disc_preset') == 'bd25' else 'warn')
         safe_add(stdscr, y, 0, f'Title: {cfg.get("disc_title") or project.name} | Options: disc={cfg.get("disc_preset","bd25")} encoder={cfg["encoder"]} resolution={cfg["resolution"]} quality={cfg["quality"]} nvenc_preset={cfg["nvenc_preset"]} audio={cfg["audio_bitrate"]} only={cfg.get("only") or "all"} smoke={cfg.get("smoke_seconds") or "off"}', width - 1, opt_attr)
         y += 1
+        y = draw_diagnostics(stdscr, y, width, meta.get('diagnostics') or [], max_rows=4)
         workflow = meta.get('workflow') or read_workflow_state(project)
         if workflow:
             w_status = workflow.get('status', '-')
@@ -1013,8 +1167,11 @@ def draw(stdscr, project: Path, root: Path):
                 break
             if key in (ord('w'), ord('W')):
                 workflow = read_workflow_state(project)
+                blockers = blocking_preflight_issues(project, root, cfg)
                 if running_rows(rows):
                     message = 'Encode already running; TUI has control. Press k to stop it first.'
+                elif blockers:
+                    message = 'Preflight blocked autopilot: ' + blockers[0].get('message', 'fix project inputs first')
                 elif workflow.get('pid') and workflow.get('status') == 'running' and pid_running(workflow.get('pid')):
                     message = f'Autopilot already running PID {workflow.get("pid")}; log {workflow.get("log_file")}'
                 else:

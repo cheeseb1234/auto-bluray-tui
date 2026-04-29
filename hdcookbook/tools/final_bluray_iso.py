@@ -343,12 +343,27 @@ def validate_final_disc(disc_root: Path):
 
     with zipfile.ZipFile(jar_path) as zf:
         names = zf.namelist()
+        grin_text = zf.read('pptx-menu.grin').decode('utf-8', errors='ignore') if 'pptx-menu.grin' in names else ''
     jar_hits = [n for n in names if any(s in n for s in forbidden)]
     if jar_hits:
         raise SystemExit('Legacy sample artifacts found in final menu jar: ' + ', '.join(jar_hits[:20]))
-    slide_assets = [n for n in names if n.startswith('assets/slide') and n.endswith('.png')]
-    if not {'assets/slide1_bg.png', 'assets/slide2_bg.png', 'assets/slide3_bg.png'}.issubset(set(slide_assets)):
+
+    # The menu can have any number of PPTX slides.  Older validation assumed the
+    # sample 3-slide deck and falsely rejected valid single-slide menus.
+    slide_assets = {n for n in names if n.startswith('assets/slide') and n.endswith('.png')}
+    bg_assets = {n for n in slide_assets if n.rsplit('/', 1)[-1].endswith('_bg.png')}
+    if not bg_assets:
         raise SystemExit('Generated PPTX slide background assets are missing from final menu jar')
+
+    referenced_assets = set()
+    for line in grin_text.splitlines():
+        if '"assets/slide' not in line:
+            continue
+        parts = line.split('"')
+        referenced_assets.update(p for p in parts if p.startswith('assets/slide') and p.endswith('.png'))
+    missing_assets = sorted(referenced_assets - slide_assets)
+    if missing_assets:
+        raise SystemExit('Generated PPTX assets are missing from final menu jar: ' + ', '.join(missing_assets[:20]))
 
 
 def main():
