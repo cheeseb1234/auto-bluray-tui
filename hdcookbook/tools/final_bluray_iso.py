@@ -299,6 +299,20 @@ def install_pptx_menu_overlay(root: Path, project: Path, disc_root: Path, output
         shutil.copy2(sample_font, aux_dir / '00000.otf')
 
     sign_pptx_menu_jar(root, disc_root, output_root)
+    return menu_dir
+
+
+def refresh_playlist_map(root: Path, project: Path, menu_dir: Path) -> dict:
+    """Regenerate the mux plan from the just-built PPTX menu actions."""
+    run([root / 'tools' / 'bluray_mux_plan.py', project, '--menu-dir', menu_dir])
+    playlist_map_path = project / 'build' / 'bluray-authoring' / 'playlist-map.json'
+    if not playlist_map_path.exists():
+        raise SystemExit(f'Missing {playlist_map_path}; mux plan generation failed')
+    plan = read_json(playlist_map_path)
+    rows = plan.get('video_playlist_map') or []
+    if not rows:
+        raise SystemExit('No video_playlist_map entries found')
+    return plan
 
 
 def validate_final_disc(disc_root: Path):
@@ -355,14 +369,6 @@ def main():
     disc_root = output_root / 'disc-root'
     iso_path = output_root / 'bluray-project.iso'
 
-    playlist_map_path = project / 'build' / 'bluray-authoring' / 'playlist-map.json'
-    if not playlist_map_path.exists():
-        raise SystemExit(f'Missing {playlist_map_path}; run create-bluray-authoring-plan.sh first')
-    plan = read_json(playlist_map_path)
-    rows = plan.get('video_playlist_map') or []
-    if not rows:
-        raise SystemExit('No video_playlist_map entries found')
-
     ts_muxer = which(root, 'tsMuxer')
     if not ts_muxer:
         raise SystemExit('Missing tsMuxer; run scripts/get-tsmuxer.sh first')
@@ -386,7 +392,9 @@ def main():
     with zipfile.ZipFile(overlay_zip) as zf:
         zf.extractall(disc_root)
 
-    install_pptx_menu_overlay(root, project, disc_root, output_root)
+    menu_dir = install_pptx_menu_overlay(root, project, disc_root, output_root)
+    plan = refresh_playlist_map(root, project, menu_dir)
+    rows = plan.get('video_playlist_map') or []
     legacy_first_play = disc_root / 'BDMV' / 'PLAYLIST' / '00000.mpls'
     if legacy_first_play.exists():
         legacy_first_play.unlink()
