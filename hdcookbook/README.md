@@ -9,7 +9,7 @@ Instead of hand-running a long chain of conversion, encoding, muxing, ISO, and b
 The TUI/autopilot workflow can:
 
 1. analyze a project folder of videos/subtitles
-2. process `menu.pptx` into generated GRIN menu assets
+2. process `menu.pptx` into generated GRIN menu assets, including autoplaying looped slide-video regions from shapes whose text matches video files
 3. encode Blu-ray-compatible H.264 + AC-3 `.m2ts` files
 4. use NVIDIA NVENC/RTX acceleration automatically when available
 5. enforce BD-25 sizing guardrails

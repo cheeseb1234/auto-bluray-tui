@@ -234,7 +234,8 @@ def project_diagnostics(project: Path, root: Path, rows=None, meta=None, cfg=Non
                 add('error', 'No clickable PPTX menu buttons were detected.', 'Use button text that matches a video name or add slide hyperlinks.')
             if not actions:
                 add('error', 'No PPTX buttons match any video files.', 'Rename button text to match video filenames; fuzzy/space/punctuation fixes are automatic when safe.')
-            targets = {a.get('video_file') for a in actions}
+            loop_targets = {l.get('video_file') for s in slides for l in s.get('loop_videos', [])}
+            targets = {a.get('video_file') for a in actions} | loop_targets
             missing_targets = sorted(t for t in targets if t and not (project / t).exists())
             if missing_targets:
                 add('error', 'PPTX menu points at video files that are missing.', 'Missing: ' + ', '.join(missing_targets[:6]))
@@ -428,9 +429,11 @@ try:
     actions = json.loads(actions_path.read_text())
 except Exception as e:
     raise SystemExit(f'Could not read generated video actions: {{e}}')
-if not actions:
+button_actions = [a for a in actions if a.get('kind', 'button') == 'button']
+if not button_actions:
     raise SystemExit('No PPTX video buttons matched project videos; fix button text or filenames before encoding/burning')
-print(f'Preflight video actions: {{len(actions)}} matched button(s)')
+loop_actions = [a for a in actions if a.get('kind') == 'loop']
+print(f'Preflight video actions: {{len(button_actions)}} matched button(s); {{len(loop_actions)}} autoplay loop(s)')
 PY
 
 if [[ ! -x {shell_quote(ts_muxer)} ]] && ! command -v tsMuxer >/dev/null 2>&1 && ! command -v tsMuxeR >/dev/null 2>&1 && ! command -v tsmuxer >/dev/null 2>&1; then

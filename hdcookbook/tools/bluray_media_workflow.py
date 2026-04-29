@@ -146,6 +146,9 @@ def language_from_name(path: Path):
 
 def discover(project: Path):
     videos=sorted([p for p in project.iterdir() if p.suffix.lower() in VIDEO_EXTS], key=lambda p:p.name.lower())
+    loop_dir = project / 'build' / 'pptx-menu-loops'
+    if loop_dir.exists():
+        videos.extend(sorted([p for p in loop_dir.iterdir() if p.suffix.lower() in VIDEO_EXTS], key=lambda p:p.name.lower()))
     subs=sorted([p for p in project.iterdir() if p.suffix.lower() in SUB_EXTS], key=lambda p:p.name.lower())
     items=[]
     for v in videos:
@@ -158,8 +161,9 @@ def discover(project: Path):
             # Match "Video 4.srt" and "Video 4 Spanish.srt" to "Video 4.mp4".
             if s.stem.lower().startswith(v.stem.lower()):
                 matching_subs.append({'file':s.name,'language':language_from_name(s)})
+        rel = str(v.relative_to(project)) if v.is_relative_to(project) else v.name
         item={
-            'file': v.name,
+            'file': rel,
             'duration_seconds': float(probe.get('format',{}).get('duration') or 0),
             'size_bytes': int(probe.get('format',{}).get('size') or 0),
             'video': vstreams[0] if vstreams else None,

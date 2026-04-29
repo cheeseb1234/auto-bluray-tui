@@ -27,7 +27,7 @@ Blu-ray authoring normally involves a fragile chain of tools and formats. This p
 
 Benefits:
 
-- **PowerPoint-first menus** — build menu screens in a familiar editor instead of hand-authoring every layout.
+- **PowerPoint-first menus** — build menu screens in a familiar editor instead of hand-authoring every layout. Shapes whose text matches a video, such as `Background 1`, can become autoplaying looped video regions on that slide.
 - **One-command workflow** — launch the TUI and let autopilot work through the steps.
 - **GPU acceleration** — uses RTX/NVENC automatically when available.
 - **BD-25 guardrails** — rejects oversized encodes instead of silently creating an ISO that will not fit.

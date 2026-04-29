@@ -52,7 +52,11 @@ def main():
         source_durations={v['file']: float(v.get('duration_seconds') or 0) for v in manifest.get('videos', [])}
 
     rows=[]
+    seen_playlists=set()
     for action in actions:
+        if action.get('playlist_id') in seen_playlists:
+            continue
+        seen_playlists.add(action.get('playlist_id'))
         encoded=project/action['encoded_m2ts']
         exists=encoded.exists()
         encoded_duration=ffprobe_duration(encoded) if exists else None
