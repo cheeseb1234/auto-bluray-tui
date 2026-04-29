@@ -1,58 +1,47 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!---
-  This ant file creates a distribution binary bundle from the
-  hdcookbook build.  It is meant to be invoked after the build
-  completes successfully.
-  -->
-  
-<project name="hdcookbook-bundle" default="bundle" basedir=".">
-    
-    <property file="user.vars.properties"/>	
-    <property file="vars.properties"/>	
-    <property name="RELEASE_BUNDLE" value="hdcookbook-bin-bundle"/>
-    
-    <target name="bundle" 
-            description="Creates a binary bundle for the distribution">
-                
+<!--
+  Create a compact binary bundle for the Auto Blu-ray TUI workflow.
+-->
+
+<project name="auto-bluray-tui-bundle" default="bundle" basedir=".">
+
+    <property file="user.vars.properties"/>
+    <property file="vars.properties"/>
+    <property name="RELEASE_BUNDLE" value="auto-bluray-tui-bin-bundle"/>
+
+    <target name="bundle" description="Creates a binary bundle for the Auto Blu-ray TUI workflow">
         <tstamp/>
-        
-        <mkdir dir="${RELEASE_BUNDLE}"/>      
-        <mkdir dir="${RELEASE_BUNDLE}.tmp/HDCookbook-DiscImage"/>
-        
+
+        <mkdir dir="${RELEASE_BUNDLE}"/>
+
         <copy tofile="${RELEASE_BUNDLE}/HDCookbook-DiscImage.zip"
               file="xlets/hdcookbook_discimage/HDCookbookDiscImage.zip"/>
-        
-        <copy tofile="${RELEASE_BUNDLE}/BridgeheadDiscImage.zip"
-              file="xlets/BridgeheadDiscImage/BridgeheadDiscImage.zip"/>
-              
+
         <copy todir="${RELEASE_BUNDLE}/Tools">
             <fileset dir="bin"/>
         </copy>
-        
-        <copy todir="${RELEASE_BUNDLE}/GrinJavadocs">
-            <fileset dir="AuthoringTools/grin/build/grin_javadoc"/>
+
+        <copy todir="${RELEASE_BUNDLE}/Scripts">
+            <fileset dir="scripts" includes="*.sh"/>
         </copy>
-        
-        <copy todir="${RELEASE_BUNDLE}">
-            <fileset dir="release-notes"/>
+
+        <copy todir="${RELEASE_BUNDLE}/ToolsPython">
+            <fileset dir="tools" includes="*.py"/>
         </copy>
-        
+
         <zip destfile="${RELEASE_BUNDLE}-${DSTAMP}.zip"
              basedir="."
              includes="${RELEASE_BUNDLE}/"/>
-             
     </target>
-    
+
     <target name="clean">
         <delete>
              <fileset dir="." includes="${RELEASE_BUNDLE}*"/>
         </delete>
         <delete dir="${RELEASE_BUNDLE}"/>
-        <delete dir="${RELEASE_BUNDLE}.tmp"/>
     </target>
 
-    <target name="spotless" depends="clean">
-    </target>
-    
+    <target name="spotless" depends="clean"/>
+
 </project>

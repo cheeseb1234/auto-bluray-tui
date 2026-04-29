@@ -1,9 +1,0 @@
-public class ab extends Test {
-    public void aa() {
-        n();
-        ab();
-    }
-    public void ab() {
-        n();
-    }
-}

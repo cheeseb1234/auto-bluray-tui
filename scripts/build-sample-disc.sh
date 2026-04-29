@@ -42,21 +42,21 @@ ERR
 fi
 
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-  docker build -f Dockerfile.jdk8 -t hdcookbook-jdk8 .
+  docker build -f Dockerfile.jdk8 -t auto-bluray-tui-jdk8 .
   docker run --rm \
     -u "$(id -u):$(id -g)" \
-    -v "$ROOT:/work/hdcookbook" \
-    hdcookbook-jdk8 \
+    -v "$ROOT:/work/auto-bluray-tui" \
+    auto-bluray-tui-jdk8 \
     ant spotless hdcookbook-discimage
   exit 0
 fi
 
 if command -v podman >/dev/null 2>&1; then
-  podman build -f Dockerfile.jdk8 -t hdcookbook-jdk8 .
+  podman build -f Dockerfile.jdk8 -t auto-bluray-tui-jdk8 .
   podman run --rm \
     -u "$(id -u):$(id -g)" \
-    -v "$ROOT:/work/hdcookbook:Z" \
-    hdcookbook-jdk8 \
+    -v "$ROOT:/work/auto-bluray-tui:Z" \
+    auto-bluray-tui-jdk8 \
     ant spotless hdcookbook-discimage
   exit 0
 fi

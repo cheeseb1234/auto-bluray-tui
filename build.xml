@@ -45,15 +45,6 @@
         <ant dir="AuthoringTools/grin" target="javadoc"/>
     </target>
 
-    <!-- Deploy GRIN javadoc to the www area -->
-    <target name="javadoc-deploy" depends="javadoc">
-        <ant dir="AuthoringTools/grin" target="javadoc-deploy"/>
-	<copy file="DiscCreationTools/security/README.html"
-	      tofile="www/security_readme.html"/>
-    </target>
-
-
-  
     <target name="clean">
         <ant dir="DiscCreationTools" target="clean"/>
         <ant dir="AuthoringTools"    target="clean"/>

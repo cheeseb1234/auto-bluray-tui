@@ -7,10 +7,14 @@ AuthoringTools/grin/build
 **/appcert.csr
 
 # Generated/local binary tool output
+/xlets/grin_samples/Scripts/PptxMenu/00000.xml
+/xlets/grin_samples/Scripts/PptxMenu/PptxMenuCommands.java
 /bin/
 /lib/stubes
 /xlets/hdcookbook_discimage/HDCookbookDiscImage.zip
 /hdcookbook_binaries.zip
+/auto-bluray-tui-bin-bundle/
+/auto-bluray-tui-bin-bundle-*.zip
 
 # Local third-party tool downloads
 /tools/bin/

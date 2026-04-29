@@ -7,5 +7,5 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ant unzip zip ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /work/hdcookbook
+WORKDIR /work/auto-bluray-tui
 CMD ["ant", "hdcookbook-discimage"]
