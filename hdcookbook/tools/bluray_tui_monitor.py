@@ -21,8 +21,15 @@ ENCODERS = ['auto', 'nvenc', 'cpu']
 RESOLUTIONS = ['1920x1080', '1280x720']
 QUALITIES = [('high', 16), ('default', 18), ('smaller', 21)]
 NVENC_PRESETS = ['p4', 'p5', 'p6', 'p7']
-AUDIO_BITRATES = ['448k', '640k']
-DISC_PRESETS = ['bd25', 'quality']
+AUDIO_BITRATES = ['192k', '256k', '448k', '640k']
+DISC_PRESETS = ['dvd5', 'dvd9', 'bd25', 'quality']
+DISC_PRESET_LABELS = {
+    'dvd5': 'DVD-5 size',
+    'dvd9': 'DVD-9 size',
+    'bd25': 'BD-25 size',
+    'quality': 'Quality/no size cap',
+}
+DISC_PRESET_CAPACITY = {'dvd5': 4_700_000_000, 'dvd9': 8_500_000_000, 'bd25': 25_000_000_000}
 SUPPORTED_VIDEO_EXTS = ('.mp4', '.mkv', '.m2ts', '.mov')
 
 WORKFLOW_STEPS = [
@@ -246,7 +253,7 @@ def project_diagnostics(project: Path, root: Path, rows=None, meta=None, cfg=Non
         if status == 'partial':
             add('error', f'{row.get("file")} appears partially encoded.', 'Re-run encode/autopilot; existing partial outputs will be replaced when needed.')
         elif status == 'oversized':
-            add('error', f'{row.get("file")} is too large for BD-25 settings.', 'Use disc=bd25 and re-encode.')
+            add('error', f'{row.get("file")} is too large for the selected disc target.', 'Choose a larger disc target or re-encode with current disc setting.')
         elif status == 'stale':
             add('warning', f'{row.get("file")} has a stale encoder PID.', 'Press k to clear running state, then rerun encode/autopilot.')
 
@@ -318,6 +325,34 @@ def quality_value(cfg):
         if name == cfg.get('quality'):
             return value
     return 18
+
+
+def parse_bitrate(value: str|None) -> int:
+    if not value:
+        return 0
+    text = str(value).strip().lower()
+    mult = 1
+    if text.endswith('k'):
+        mult = 1000; text = text[:-1]
+    elif text.endswith('m'):
+        mult = 1_000_000; text = text[:-1]
+    try:
+        return int(float(text) * mult)
+    except Exception:
+        return 0
+
+
+def preset_audio_bitrate(disc_preset: str):
+    return {'dvd5': '192k', 'dvd9': '256k', 'bd25': '448k'}.get(disc_preset)
+
+
+def estimated_preset_total_bitrate(disc_preset: str, total_duration: float):
+    cap = DISC_PRESET_CAPACITY.get(disc_preset)
+    if not cap or not total_duration:
+        return 0
+    audio = parse_bitrate(preset_audio_bitrate(disc_preset))
+    video = max(350_000, int(cap * 8 * 0.88 / total_duration - audio - 350_000))
+    return int((video + audio + 500_000) * 1.20)
 
 
 def build_encode_command(root: Path, project: Path, cfg: dict):
@@ -421,7 +456,7 @@ CURRENT_STEP=build-sample-disc
 run_step build-sample-disc {shell_quote(scripts / 'build-sample-disc.sh')}
 
 CURRENT_STEP=create-final-bluray-iso
-run_step create-final-bluray-iso {shell_quote(scripts / 'create-final-bluray-iso.sh')} "$PROJECT" --volume-id {shell_quote(disc_title)}
+run_step create-final-bluray-iso {shell_quote(scripts / 'create-final-bluray-iso.sh')} "$PROJECT" --volume-id {shell_quote(disc_title)} --disc-preset {shell_quote(cfg.get('disc_preset', 'bd25'))}
 
 CURRENT_STEP=auto-burn-final-bluray
 update_state running auto-burn-final-bluray
@@ -864,11 +899,12 @@ def collect(project: Path, root: Path):
             status = 'smoke'
         if status == 'done' and encoded_duration and duration and encoded_duration < duration - 2:
             status = 'partial'
-        if status == 'done' and cfg.get('disc_preset') == 'bd25' and out_info.get('bit_rate') and out_info.get('bit_rate') > 7_200_000:
+        max_preset_bitrate = estimated_preset_total_bitrate(cfg.get('disc_preset'), sum(float(v.get('duration_seconds') or 0) for v in manifest.get('videos', [])))
+        if status == 'done' and max_preset_bitrate and out_info.get('bit_rate') and out_info.get('bit_rate') > max_preset_bitrate:
             status = 'oversized'
         if not status:
             if encoded_duration and duration and encoded_duration >= duration - 2:
-                if cfg.get('disc_preset') == 'bd25' and out_info.get('bit_rate') and out_info.get('bit_rate') > 7_200_000:
+                if max_preset_bitrate and out_info.get('bit_rate') and out_info.get('bit_rate') > max_preset_bitrate:
                     status = 'oversized'
                 else:
                     status = 'done'
@@ -1161,8 +1197,9 @@ def draw(stdscr, project: Path, root: Path):
         overall_text = f'{overall:5.1f}%' if overall is not None else '  ---%'
         safe_add(stdscr, y, 0, f'Overall: {overall_text}  {meta.get("done_count",0)}/{meta.get("total_count",0)} done  {bar(30, overall)}', width - 1, color('ok_bold' if meta.get('done_count') == meta.get('total_count') else 'info_bold', curses.A_BOLD))
         y += 1
-        opt_attr = color('ok' if cfg.get('disc_preset') == 'bd25' else 'warn')
-        safe_add(stdscr, y, 0, f'Title: {cfg.get("disc_title") or project.name} | Options: disc={cfg.get("disc_preset","bd25")} encoder={cfg["encoder"]} resolution={cfg["resolution"]} quality={cfg["quality"]} nvenc_preset={cfg["nvenc_preset"]} audio={cfg["audio_bitrate"]} only={cfg.get("only") or "all"} smoke={cfg.get("smoke_seconds") or "off"}', width - 1, opt_attr)
+        disc_label = DISC_PRESET_LABELS.get(cfg.get('disc_preset'), cfg.get('disc_preset', 'bd25'))
+        opt_attr = color('warn' if cfg.get('disc_preset') == 'quality' else 'ok')
+        safe_add(stdscr, y, 0, f'Title: {cfg.get("disc_title") or project.name} | Options: disc={disc_label} encoder={cfg["encoder"]} resolution={cfg["resolution"]} quality={cfg["quality"]} nvenc_preset={cfg["nvenc_preset"]} audio={cfg["audio_bitrate"]} only={cfg.get("only") or "all"} smoke={cfg.get("smoke_seconds") or "off"}', width - 1, opt_attr)
         y += 1
         y = draw_diagnostics(stdscr, y, width, meta.get('diagnostics') or [], max_rows=4)
         workflow = meta.get('workflow') or read_workflow_state(project)
@@ -1296,8 +1333,9 @@ def draw(stdscr, project: Path, root: Path):
                 break
             if key in (ord('d'), ord('D')):
                 cfg['disc_preset'] = cycle(cfg.get('disc_preset','bd25'), DISC_PRESETS)
-                if cfg['disc_preset'] == 'bd25':
-                    cfg['audio_bitrate'] = '448k'
+                preset_audio = preset_audio_bitrate(cfg['disc_preset'])
+                if preset_audio:
+                    cfg['audio_bitrate'] = preset_audio
                 save_config(project, cfg); break
             if key in (ord('e'), ord('E')):
                 cfg['encoder'] = cycle(cfg['encoder'], ENCODERS)

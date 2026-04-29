@@ -6,6 +6,52 @@ from pathlib import Path
 
 VIDEO_EXTS={'.mkv','.mp4','.m2ts','.mov'}
 SUB_EXTS={'.srt','.sup','.ass','.ssa'}
+DISC_PRESETS={
+    # capacity_bytes are practical decimal disc capacities with safety margin
+    # applied later for mux/filesystem/menu overhead.
+    'dvd5': {'label': 'DVD-5 sized Blu-ray/AVCHD target', 'capacity_bytes': 4_700_000_000, 'audio_bitrate': '192k', 'maxrate': '3000k', 'bufsize': '6000k'},
+    'dvd9': {'label': 'DVD-9 sized Blu-ray/AVCHD target', 'capacity_bytes': 8_500_000_000, 'audio_bitrate': '256k', 'maxrate': '6000k', 'bufsize': '9000k'},
+    'bd25': {'label': 'BD-25 target', 'capacity_bytes': 25_000_000_000, 'audio_bitrate': '448k', 'maxrate': '9000k', 'bufsize': '12000k'},
+}
+
+
+def parse_bitrate(value: str|None) -> int:
+    if not value:
+        return 0
+    text=str(value).strip().lower()
+    mult=1
+    if text.endswith('k'):
+        mult=1000; text=text[:-1]
+    elif text.endswith('m'):
+        mult=1000_000; text=text[:-1]
+    try:
+        return int(float(text)*mult)
+    except Exception:
+        return 0
+
+
+def fmt_kbps(bits_per_second: int) -> str:
+    return f'{max(100, int(bits_per_second/1000))}k'
+
+
+def preset_video_bitrate(disc_preset: str, total_duration_seconds: float, audio_bitrate: str) -> str|None:
+    preset=DISC_PRESETS.get(disc_preset)
+    if not preset or not total_duration_seconds:
+        return None
+    # Leave generous room for BD-J menus, subtitle streams, BDMV structures,
+    # UDF/ISO overhead, and encoder/mux variance.
+    usable_bits=preset['capacity_bytes']*8*0.88
+    audio_bps=parse_bitrate(audio_bitrate)
+    video_bps=int(usable_bits/total_duration_seconds - audio_bps - 350_000)
+    return fmt_kbps(max(350_000, video_bps))
+
+
+def max_total_bitrate_for_options(expected_options: dict) -> int:
+    video=parse_bitrate(expected_options.get('video_bitrate'))
+    audio=parse_bitrate(expected_options.get('audio_bitrate'))
+    if not video:
+        return 0
+    return int((video + audio + 500_000) * 1.20)
 
 
 def run(cmd):
@@ -77,15 +123,14 @@ def output_acceptable(path: Path, item: dict, args, expected_options: dict):
     if int(video.get('width') or 0) != width or int(video.get('height') or 0) != height:
         return False, f'resolution mismatch ({video.get("width")}x{video.get("height")})'
 
-    if args.disc_preset == 'bd25':
+    max_total_bitrate = max_total_bitrate_for_options(expected_options)
+    if max_total_bitrate:
         try:
             bit_rate = int(probe.get('format', {}).get('bit_rate') or 0)
         except Exception:
             bit_rate = 0
-        # BD-25 preset targets roughly 5400k video + 448k AC-3. Allow muxing
-        # overhead and encoder variance, but reject earlier oversized encodes.
-        if bit_rate and bit_rate > 7_200_000:
-            return False, f'bitrate too high for BD-25 preset ({bit_rate/1_000_000:.1f} Mb/s)'
+        if bit_rate and bit_rate > max_total_bitrate:
+            return False, f'bitrate too high for {args.disc_preset} preset ({bit_rate/1_000_000:.1f} Mb/s)'
 
     return True, 'acceptable existing encode'
 
@@ -211,7 +256,7 @@ def main():
     ap.add_argument('--audio-bitrate', default='640k', help='AC-3 audio bitrate')
     ap.add_argument('--nvenc-preset', default='p5', help='NVENC preset, e.g. p4/p5/p6/p7')
     ap.add_argument('--cpu-preset', default='slow', help='x264 preset, e.g. medium/slow/veryslow')
-    ap.add_argument('--disc-preset', choices=['quality','bd25'], default='quality', help='quality keeps CRF/CQ behavior; bd25 targets single-layer BD-25 size')
+    ap.add_argument('--disc-preset', choices=['quality','dvd5','dvd9','bd25'], default='quality', help='quality keeps CRF/CQ behavior; dvd5/dvd9/bd25 target disc-sized Blu-ray/AVCHD images')
     ap.add_argument('--video-bitrate', default=None, help='average video bitrate, e.g. 6200k; overrides disc preset')
     ap.add_argument('--maxrate', default='40000k', help='video VBV maxrate')
     ap.add_argument('--bufsize', default='30000k', help='video VBV buffer size')
@@ -230,6 +275,7 @@ def main():
     if args.plan:
         write_plan(project, manifest, output_root)
     if args.encode:
+        total_duration = sum(float(v.get('duration_seconds') or 0) for v in manifest.get('videos', []))
         for item in manifest['videos']:
             if args.only and args.only.lower() not in item['file'].lower():
                 continue
@@ -247,13 +293,12 @@ def main():
             audio_bitrate = args.audio_bitrate
             maxrate = args.maxrate
             bufsize = args.bufsize
-            if args.disc_preset == 'bd25' and not video_bitrate:
-                # Project is ~7.87h. 5400k video + 448k AC3 plus MPEG-TS/mux
-                # overhead leaves practical room for menu/filesystem overhead on BD-25.
-                video_bitrate = '5400k'
-                audio_bitrate = '448k'
-                maxrate = '9000k'
-                bufsize = '12000k'
+            preset = DISC_PRESETS.get(args.disc_preset)
+            if preset and not video_bitrate:
+                audio_bitrate = preset['audio_bitrate']
+                maxrate = preset['maxrate']
+                bufsize = preset['bufsize']
+                video_bitrate = preset_video_bitrate(args.disc_preset, total_duration, audio_bitrate)
             out_path = output_root/item['recommended_output']
             expected_options = expected_encode_options(args, selected_encoder, audio_bitrate, video_bitrate, maxrate, bufsize)
             existing_ok, existing_reason = output_acceptable(out_path, item, args, expected_options)

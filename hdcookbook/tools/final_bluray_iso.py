@@ -11,6 +11,13 @@ import zipfile
 from pathlib import Path
 
 
+DISC_CAPACITY_BYTES = {
+    'dvd5': 4_700_000_000,
+    'dvd9': 8_500_000_000,
+    'bd25': 25_000_000_000,
+}
+
+
 def run(cmd, **kwargs):
     print('+', ' '.join(str(x) for x in cmd), flush=True)
     return subprocess.run([str(x) for x in cmd], check=True, **kwargs)
@@ -42,7 +49,7 @@ def ffprobe(path: Path):
     return json.loads(result.stdout)
 
 
-def validate_encoded(path: Path, source_duration: float|None, *, allow_oversized=False):
+def validate_encoded(path: Path, source_duration: float|None, *, allow_oversized=False, max_bitrate: int|None = None):
     if not path.exists() or path.stat().st_size <= 0:
         raise SystemExit(f'Missing encoded file: {path}')
     data = ffprobe(path)
@@ -58,8 +65,8 @@ def validate_encoded(path: Path, source_duration: float|None, *, allow_oversized
         raise SystemExit(f'Encoded file is not H.264 video: {path}')
     if not audio or audio.get('codec_name') != 'ac3' or str(audio.get('sample_rate') or '') != '48000':
         raise SystemExit(f'Encoded file is not 48 kHz AC-3 audio: {path}')
-    if not allow_oversized and bit_rate and bit_rate > 7_200_000:
-        raise SystemExit(f'Encoded file is too large for BD-25 target: {path} ({bit_rate/1_000_000:.1f} Mb/s)')
+    if not allow_oversized and max_bitrate and bit_rate and bit_rate > max_bitrate:
+        raise SystemExit(f'Encoded file bitrate too high for selected disc target: {path} ({bit_rate/1_000_000:.1f} Mb/s)')
     return {'duration': duration, 'bit_rate': bit_rate, 'size': int(fmt.get('size') or path.stat().st_size)}
 
 
@@ -371,7 +378,8 @@ def main():
     ap.add_argument('project_dir')
     ap.add_argument('--output-root', default=None)
     ap.add_argument('--volume-id', default=None, help='disc title / ISO volume label; sanitized to a 32-character volume ID')
-    ap.add_argument('--allow-oversized', action='store_true', help='allow outputs above BD-25 bitrate guardrail')
+    ap.add_argument('--disc-preset', choices=['quality', 'dvd5', 'dvd9', 'bd25'], default='bd25', help='disc size target for final capacity validation')
+    ap.add_argument('--allow-oversized', action='store_true', help='allow outputs above selected disc bitrate/size guardrails')
     ap.add_argument('--no-iso', action='store_true', help='build final BDMV tree only')
     args = ap.parse_args()
 
@@ -417,12 +425,16 @@ def main():
     manifest_path = project / 'build' / 'bluray-media' / 'media-manifest.json'
     manifest = read_json(manifest_path) if manifest_path.exists() else {'videos': []}
     durations = {v['file']: float(v.get('duration_seconds') or 0) for v in manifest.get('videos', [])}
+    total_duration = sum(durations.values())
+    max_bitrate = None
+    if args.disc_preset in DISC_CAPACITY_BYTES and total_duration:
+        max_bitrate = int((DISC_CAPACITY_BYTES[args.disc_preset] * 8 * 0.88 / total_duration + 500_000) * 1.25)
 
     summary = []
     for row in rows:
         playlist_id = str(row['playlist_id']).zfill(5)
         encoded = Path(row.get('encoded_abs') or (project / row['encoded_m2ts'])).resolve()
-        info = validate_encoded(encoded, durations.get(row.get('video_file')), allow_oversized=args.allow_oversized)
+        info = validate_encoded(encoded, durations.get(row.get('video_file')), allow_oversized=args.allow_oversized, max_bitrate=max_bitrate)
 
         title_dir = mux_work / playlist_id
         title_dir.mkdir(parents=True, exist_ok=True)
@@ -473,6 +485,7 @@ def main():
         'disc_root': str(disc_root),
         'iso': str(iso_path) if not args.no_iso else None,
         'volume_id': volume_id,
+        'disc_preset': args.disc_preset,
         'titles': summary,
         'total_stream_bytes': sum(x['size'] for x in summary),
     }
@@ -482,6 +495,9 @@ def main():
     if not args.no_iso:
         make_iso(mkisofs_cmd, disc_root, iso_path, volume_id)
         report['iso_bytes'] = iso_path.stat().st_size
+        capacity = DISC_CAPACITY_BYTES.get(args.disc_preset)
+        if capacity and not args.allow_oversized and report['iso_bytes'] > capacity:
+            raise SystemExit(f'Final ISO is too large for {args.disc_preset}: {report["iso_bytes"]} bytes > {capacity} bytes')
         (output_root / 'final-report.json').write_text(json.dumps(report, indent=2) + '\n')
 
     print(json.dumps(report, indent=2))

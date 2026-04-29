@@ -50,7 +50,7 @@ In the TUI:
 
 - **Actions:** `w` full autopilot, `Enter` encode media only, `b` burn the final ISO, `k` stop running work, `q` quit
 - **View/device:** `r` refresh/re-analyze if needed, `v` cycle detected optical burners
-- **Options:** `d` disc size, `e` encoder, `z` resolution, `l` quality, `p` NVENC preset, `a` audio bitrate, `o` encode only one video, `s` smoke-test length
+- **Options:** `d` disc size (`DVD-5` → `DVD-9` → `BD-25` → quality/no cap), `e` encoder, `z` resolution, `l` quality, `p` NVENC preset, `a` audio bitrate, `o` encode only one video, `s` smoke-test length
 
 ## Project folder expectations
 
