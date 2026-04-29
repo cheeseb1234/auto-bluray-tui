@@ -54,14 +54,22 @@
 
 import java.awt.Container;
 import java.awt.Component;
-import java.awt.Component;
+import java.awt.AlphaComposite;
+import java.awt.Color;
 import java.awt.Graphics2D;
+import java.awt.Graphics;
 import java.awt.Image;
 import java.awt.Rectangle;
+import java.awt.Toolkit;
 import java.io.IOException;
 import javax.tv.xlet.Xlet;
 import javax.tv.xlet.XletContext;
 import javax.tv.graphics.TVContainer;
+import org.dvb.event.EventManager;
+import org.dvb.event.UserEvent;
+import org.dvb.event.UserEventListener;
+import org.dvb.event.UserEventRepository;
+import org.bluray.ui.event.HRcEvent;
 
 import com.hdcookbook.grin.Show;
 import com.hdcookbook.grin.animator.AnimationClient; 
@@ -77,17 +85,20 @@ import org.dvb.ui.DVBBufferedImage;
  * An xlet example that displays GRIN script.
  */
 
-public class GrinDriverXlet implements Xlet, AnimationContext {
+public class GrinDriverXlet implements Xlet, AnimationContext, UserEventListener {
         
         public Show show;
         Container rootContainer;
         DirectDrawEngine animationEngine;
         XletContext context;
         String grinScriptName = null;
+        private boolean menuVisible = false;
+        private static GrinDriverXlet instance = null;
         
         public void initXlet(XletContext context) {
             
             this.context = context;
+            instance = this;
             String[] args = (String[])context.getXletProperty(XletContext.ARGS);
             grinScriptName = args[0];
            
@@ -102,17 +113,81 @@ public class GrinDriverXlet implements Xlet, AnimationContext {
         
         public void startXlet() {
             rootContainer.setVisible(true);
+            menuVisible = true;
+            rootContainer.requestFocus();
             animationEngine.start();       
         }
         
         public void pauseXlet() {
             rootContainer.setVisible(false);
+            menuVisible = false;
             animationEngine.pause();
         }
         
         public void destroyXlet(boolean unconditional) {
+            instance = null;
             rootContainer = null;
             animationEngine.destroy();
+        }
+
+        public static void hideMenuGraphics() {
+            if (instance != null && instance.rootContainer != null) {
+                try {
+                    Component c = instance.animationEngine.getComponent();
+                    if (c != null) {
+                        Graphics g = c.getGraphics();
+                        if (g instanceof Graphics2D) {
+                            Graphics2D g2 = (Graphics2D) g;
+                            // Match DirectDrawEngine's own erase path: write
+                            // transparent pixels with Src.  SrcOver + transparent
+                            // is a no-op on several BD-J/libbluray graphics paths,
+                            // which left the activated button image burned on top
+                            // of video playback.
+                            g2.setComposite(AlphaComposite.Src);
+                            g2.setColor(new Color(0, 0, 0, 0));
+                            g2.fillRect(0, 0, 1920, 1080);
+                            Toolkit.getDefaultToolkit().sync();
+                            g2.dispose();
+                        }
+                        c.setVisible(false);
+                    }
+                } catch (Throwable ignored) {
+                    // Best effort: some BD-J stacks don't expose graphics here.
+                }
+                // Keep the BD-J root window visible and focused while video plays.
+                // If the root window is hidden, libbluray/VLC may stop delivering
+                // menu-key events and can fail bd_menu_call() with "error storing
+                // playback location".  The drawing component is hidden/cleared
+                // above, so the video plane remains unobscured.
+                instance.rootContainer.setVisible(true);
+                instance.rootContainer.requestFocus();
+                instance.menuVisible = false;
+            }
+        }
+
+        public static void showTopMenu() {
+            if (instance != null && instance.rootContainer != null) {
+                instance.rootContainer.setVisible(true);
+                try {
+                    Class commands = Class.forName("PptxMenuCommands");
+                    commands.getMethod("stopVideo", new Class[0]).invoke(null, new Object[0]);
+                } catch (Throwable ignored) {
+                    // Generated command class may not be loaded yet.
+                }
+                try {
+                    Component c = instance.animationEngine.getComponent();
+                    if (c != null) {
+                        c.setVisible(true);
+                    }
+                } catch (Throwable ignored) {
+                    // Best effort only.
+                }
+                instance.menuVisible = true;
+                instance.rootContainer.requestFocus();
+                if (instance.show != null) {
+                    instance.show.activateSegment(instance.show.getSegment("S:Initialize"));
+                }
+            }
         }
         
         public void animationInitialize() throws InterruptedException {
@@ -167,7 +242,25 @@ public class GrinDriverXlet implements Xlet, AnimationContext {
         } 
         
         public void animationFinishInitialization() {
-            show.activateSegment(show.getSegment("S:Initialize"));              
+            show.activateSegment(show.getSegment("S:Initialize"));
+
+            UserEventRepository userEventRepo = new UserEventRepository("PptxMenu");
+            userEventRepo.addAllArrowKeys();
+            userEventRepo.addAllNumericKeys();
+            userEventRepo.addKey(HRcEvent.VK_ENTER);
+            userEventRepo.addKey(HRcEvent.VK_POPUP_MENU);
+            EventManager.getInstance().addUserEventListener(this, userEventRepo);
+            rootContainer.requestFocus();
+        }
+
+        public void userEventReceived(UserEvent e) {
+            if (show != null && e.getType() == HRcEvent.KEY_PRESSED) {
+                if (e.getCode() == HRcEvent.VK_POPUP_MENU && !menuVisible) {
+                    showTopMenu();
+                    return;
+                }
+                show.handleKeyPressed(e.getCode());
+            }
         }
         
 }

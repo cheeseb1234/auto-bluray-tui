@@ -72,4 +72,4 @@ ant preview
   }
 ]
 
-These preview as button activation feedback and emit `PPTX_MENU_PLAY` lines through a generated `playVideo(videoFile, playlistId)` hook. The next step is replacing that hook with real BD-J playlist/title playback.
+These preview as button activation feedback and call a generated `playVideo(videoFile, playlistId)` hook that starts the matching Blu-ray playlist.

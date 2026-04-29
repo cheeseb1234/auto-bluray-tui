@@ -101,7 +101,7 @@ def assign_video_actions(model):
     model['video_actions']=video_buttons
 
 
-def export_slide_pngs(pptx: Path, out_assets: Path, target=(1280,720)):
+def export_slide_pngs(pptx: Path, out_assets: Path, target=(1920,1080)):
     out_assets.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as td:
         td=Path(td)
@@ -114,27 +114,44 @@ def export_slide_pngs(pptx: Path, out_assets: Path, target=(1280,720)):
             im.save(out_assets/f'slide{i}_bg.png')
 
 
-def draw_overlays(model, assets: Path, target=(1280,720)):
+def draw_overlays(model, assets: Path, target=(1920,1080)):
     src_w, src_h = model['source_size_emu']
     sx, sy = target[0]/src_w, target[1]/src_h
-    try:
-        font=ImageFont.truetype('/usr/share/fonts/TTF/DejaVuSans-Bold.ttf', 26)
-    except Exception:
-        font=ImageFont.load_default()
     for slide in model['slides']:
+        bg = Image.open(assets / f"{slide['id']}_bg.png").convert('RGBA')
         for btn in slide['buttons']:
             r=btn['rect_emu']
             x,y,w,h = round(r['x']*sx), round(r['y']*sy), round(r['w']*sx), round(r['h']*sy)
             btn['rect_px']={'x':x,'y':y,'w':w,'h':h}
-            for state, fill, outline in [('selected',(64,170,255,70),(255,255,255,230)),('activated',(64,255,170,130),(255,255,255,255))]:
+            for state, outline in [('selected',(255,255,255,245)),('activated',(64,255,170,255))]:
                 pad=8
-                im=Image.new('RGBA',(w+pad*2,h+pad*2),(0,0,0,0))
+                # Build the state image as an opaque crop from the rendered slide,
+                # then draw only a border.  Some BD-J/libbluray paths don't handle
+                # alpha-only overlay PNGs reliably; opaque crops preserve the exact
+                # PowerPoint button text/art instead of covering it.
+                crop_box=(max(0,x-pad), max(0,y-pad), min(target[0],x+w+pad), min(target[1],y+h+pad))
+                im=Image.new('RGBA',(w+pad*2,h+pad*2),(0,0,0,255))
+                crop=bg.crop(crop_box)
+                im.paste(crop,(crop_box[0]-(x-pad), crop_box[1]-(y-pad)))
                 d=ImageDraw.Draw(im)
-                d.rounded_rectangle((2,2,w+pad*2-2,h+pad*2-2), radius=22, fill=fill, outline=outline, width=4)
-                # Keep the underlying PPT label visible; just add a subtle play glyph for video buttons.
-                if btn['action']['kind']=='video':
-                    d.polygon([(pad+18,pad+18),(pad+18,pad+h-18),(pad+48,pad+h//2)], fill=(255,255,255,230))
+                d.rounded_rectangle((2,2,w+pad*2-2,h+pad*2-2), radius=22, outline=outline, width=5)
                 im.save(assets/f"{slide['id']}_{btn['id']}_{state}.png")
+
+
+def button_grid(buttons):
+    """Return GRIN visual-rc rows that follow the button positions on the slide."""
+    rows=[]
+    for btn in sorted(buttons, key=lambda b:(b['rect_px']['y'] + b['rect_px']['h']/2, b['rect_px']['x'])):
+        cy=btn['rect_px']['y'] + btn['rect_px']['h']/2
+        placed=False
+        for row in rows:
+            row_cy=sum(b['rect_px']['y'] + b['rect_px']['h']/2 for b in row)/len(row)
+            row_h=max(b['rect_px']['h'] for b in row)
+            if abs(cy-row_cy) <= max(40, row_h*0.45):
+                row.append(btn); placed=True; break
+        if not placed:
+            rows.append([btn])
+    return [sorted(row, key=lambda b:b['rect_px']['x']) for row in rows]
 
 
 def generate_show(model, out: Path):
@@ -143,10 +160,52 @@ def generate_show(model, out: Path):
         'java_generated_class PptxMenuCommands [[',
         '    import com.hdcookbook.grin.Show;',
         '    import com.hdcookbook.grin.util.Debug;',
+        '    import javax.media.Control;',
+        '    import javax.media.Manager;',
+        '    import javax.media.Player;',
+        '    import org.bluray.media.PlayListChangeControl;',
+        '    import org.bluray.net.BDLocator;',
+        '    import org.davic.media.MediaLocator;',
         '    public class PptxMenuCommands extends com.hdcookbook.grin.GrinXHelper {',
+        '        private static Player player;',
+        '        private static PlayListChangeControl playlistControl;',
         '        public PptxMenuCommands(Show show) { super(show); }',
-        '        public void playVideo(String videoFile, String playlistId) {',
+        '        public static synchronized void stopVideo() {',
+        '            Debug.println("PPTX_MENU_STOP");',
+        '            try {',
+        '                if (player != null) { player.stop(); }',
+        '            } catch (Throwable t) {',
+        '                Debug.println("PPTX_MENU_STOP_FAILED");',
+        '                if (Debug.LEVEL > 0) { Debug.printStackTrace(t); }',
+        '            }',
+        '        }',
+        '        public synchronized void playVideo(String videoFile, String playlistId) {',
         '            Debug.println("PPTX_MENU_PLAY video=" + videoFile + " playlist=" + playlistId);',
+        '            try {',
+        '                GrinDriverXlet.hideMenuGraphics();',
+        '                BDLocator loc = new BDLocator("bd://1.PLAYLIST:" + playlistId);',
+        '                if (player == null) {',
+        '                    player = Manager.createPlayer(new MediaLocator(loc));',
+        '                    player.prefetch();',
+        '                    Control[] controls = player.getControls();',
+        '                    for (int i = 0; i < controls.length; i++) {',
+        '                        if (controls[i] instanceof PlayListChangeControl) {',
+        '                            playlistControl = (PlayListChangeControl) controls[i];',
+        '                        }',
+        '                    }',
+        '                } else if (playlistControl != null) {',
+        '                    player.stop();',
+        '                    playlistControl.selectPlayList(loc);',
+        '                } else {',
+        '                    player.stop();',
+        '                    player = Manager.createPlayer(new MediaLocator(loc));',
+        '                    player.prefetch();',
+        '                }',
+        '                player.start();',
+        '            } catch (Throwable t) {',
+        '                Debug.println("PPTX_MENU_PLAY_FAILED video=" + videoFile + " playlist=" + playlistId);',
+        '                if (Debug.LEVEL > 0) { Debug.printStackTrace(t); }',
+        '            }',
         '        }',
         '        JAVA_COMMAND_BODY',
         '    }',
@@ -161,6 +220,16 @@ def generate_show(model, out: Path):
     for slide in model['slides']:
         sid=slide['id']
         lines += [f'segment S:{sid}','    active {',f'        F:{sid}.BG',f'        F:{sid}.Buttons','    } setup {',f'        F:{sid}.BG',f'        F:{sid}.Buttons','    } rc_handlers {',f'        R:{sid}','    }',';','']
+    lines += [
+        '# Empty segment used before video playback so GRIN has one frame to',
+        '# erase any selected/activated button images from the graphics plane.',
+        'segment S:VideoPlayback',
+        '    active {',
+        '    } setup {',
+        '    }',
+        ';',
+        ''
+    ]
     for slide in model['slides']:
         sid=slide['id']
         lines.append(f'feature fixed_image F:{sid}.BG 0 0 "assets/{sid}_bg.png" ;')
@@ -179,8 +248,8 @@ def generate_show(model, out: Path):
             lines.append(f'    {bid}_activated F:{sid}.{bid}.Activated')
         lines += ['} ;','']
         if not buttons: continue
-        grid=' '.join(btn['id'] for btn in buttons)
-        lines += [f'rc_handler visual R:{sid}',f'    grid {{ {{ {grid} }} }}',f'    assembly F:{sid}.Buttons','        start_selected true','    select {']
+        grid_rows=' '.join('{ ' + ' '.join(btn['id'] for btn in row) + ' }' for row in button_grid(buttons))
+        lines += [f'rc_handler visual R:{sid}',f'    grid {{ {grid_rows} }}',f'    assembly F:{sid}.Buttons','        start_selected true','    select {']
         for btn in buttons:
             lines.append(f"        {btn['id']} {btn['id']}_selected")
         lines += ['    }','    activate {']
@@ -189,9 +258,9 @@ def generate_show(model, out: Path):
             if act['kind']=='slide':
                 lines.append(f"        {bid} {bid}_activated {{ activate_segment S:{act['target']} ; }}")
             else:
-                video=act['target'].replace('\\', '\\\\').replace('"', '\"')
+                video=act['target'].replace('\\', '\\\\').replace('"', '\\"')
                 playlist=act.get('playlist_id', '00000')
-                lines.append(f"        {bid} {bid}_activated {{ java_command [[ playVideo(\"{video}\", \"{playlist}\"); ]] activate_segment S:{sid} ; }}")
+                lines.append(f"        {bid} {bid}_activated {{ activate_segment S:VideoPlayback ; sync_display ; java_command [[ playVideo(\"{video}\", \"{playlist}\"); ]] }}")
         lines += ['    }','    mouse {']
         for btn in buttons:
             r=btn['rect_px']; lines.append(f"        {btn['id']} ( {r['x']} {r['y']} {r['x']+r['w']} {r['y']+r['h']} )")
@@ -213,6 +282,7 @@ bdjoconverter.jar=${bin.dir}/bdjo.jar
 grinviewer.jar=${bin.dir}/grinviewer.jar
 converter.jar=${bin.dir}/grincompiler.jar
 grin.library.src.dir=${top.dir}/AuthoringTools/grin/library/src
+GRIN_COMPILER_OPTIONS=-avoid_optimization
 ''')
     (out/'build.xml').write_text('''<?xml version="1.0" encoding="UTF-8"?>
 <project name="PptxMenu sample" default="default" basedir=".">
@@ -249,7 +319,7 @@ ant preview
 
 {json.dumps([{'slide':s['id'],'button':b['label'],'action':b['action']} for s in model['slides'] for b in s['buttons'] if b['action']['kind']=='video'], indent=2)}
 
-These preview as button activation feedback and emit `PPTX_MENU_PLAY` lines through a generated `playVideo(videoFile, playlistId)` hook. The next step is replacing that hook with real BD-J playlist/title playback.
+These preview as button activation feedback and call a generated `playVideo(videoFile, playlistId)` hook that starts the matching Blu-ray playlist.
 ''')
 
 

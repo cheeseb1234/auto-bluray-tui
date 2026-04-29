@@ -84,17 +84,18 @@ information or have any questions.
         </applications>
     </applicationManagementTable>
     <fileAccessInfo>.</fileAccessInfo>
-    <keyInterestTable>0x0</keyInterestTable>
+    <keyInterestTable>0x7c00</keyInterestTable>
     <tableOfAccessiblePlayLists>
-        <accessToAllFlag>false</accessToAllFlag>
+        <accessToAllFlag>true</accessToAllFlag>
         <autostartFirstPlayListFlag>false</autostartFirstPlayListFlag>
-        <playListFileNames>00004</playListFileNames>    
     </tableOfAccessiblePlayLists>
     <terminalInfo>
         <defaultFontFile>00000</defaultFontFile>
         <initialHaviConfig>HD_1920_1080</initialHaviConfig>
         <menuCallMask>false</menuCallMask>
         <titleSearchMask>false</titleSearchMask>
+        <mouseInterest>true</mouseInterest>
+        <mouseSupported>true</mouseSupported>
     </terminalInfo>
     <version>V_0200</version>
 </bdjo>

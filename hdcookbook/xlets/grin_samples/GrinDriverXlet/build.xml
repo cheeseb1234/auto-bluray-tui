@@ -9,6 +9,7 @@
     <property file="${top.dir}/user.vars.properties"/>	
     <property file="${top.dir}/vars.properties"/>	
     <property file="build.properties"/>
+    <property name="GRIN_COMPILER_OPTIONS" value=""/>
     
     <property name="xlet.name" value="GrinDriverXlet"/>
     
@@ -63,6 +64,7 @@
             <arg value="."/>
             <arg value="-out"/>
             <arg value="${build.dir}"/>
+            <arg line="${GRIN_COMPILER_OPTIONS}"/>
         </java>
     </presetdef>
     

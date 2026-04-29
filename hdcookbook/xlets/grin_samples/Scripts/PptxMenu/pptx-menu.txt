@@ -4,10 +4,52 @@ show
 java_generated_class PptxMenuCommands [[
     import com.hdcookbook.grin.Show;
     import com.hdcookbook.grin.util.Debug;
+    import javax.media.Control;
+    import javax.media.Manager;
+    import javax.media.Player;
+    import org.bluray.media.PlayListChangeControl;
+    import org.bluray.net.BDLocator;
+    import org.davic.media.MediaLocator;
     public class PptxMenuCommands extends com.hdcookbook.grin.GrinXHelper {
+        private static Player player;
+        private static PlayListChangeControl playlistControl;
         public PptxMenuCommands(Show show) { super(show); }
-        public void playVideo(String videoFile, String playlistId) {
+        public static synchronized void stopVideo() {
+            Debug.println("PPTX_MENU_STOP");
+            try {
+                if (player != null) { player.stop(); }
+            } catch (Throwable t) {
+                Debug.println("PPTX_MENU_STOP_FAILED");
+                if (Debug.LEVEL > 0) { Debug.printStackTrace(t); }
+            }
+        }
+        public synchronized void playVideo(String videoFile, String playlistId) {
             Debug.println("PPTX_MENU_PLAY video=" + videoFile + " playlist=" + playlistId);
+            try {
+                GrinDriverXlet.hideMenuGraphics();
+                BDLocator loc = new BDLocator("bd://1.PLAYLIST:" + playlistId);
+                if (player == null) {
+                    player = Manager.createPlayer(new MediaLocator(loc));
+                    player.prefetch();
+                    Control[] controls = player.getControls();
+                    for (int i = 0; i < controls.length; i++) {
+                        if (controls[i] instanceof PlayListChangeControl) {
+                            playlistControl = (PlayListChangeControl) controls[i];
+                        }
+                    }
+                } else if (playlistControl != null) {
+                    player.stop();
+                    playlistControl.selectPlayList(loc);
+                } else {
+                    player.stop();
+                    player = Manager.createPlayer(new MediaLocator(loc));
+                    player.prefetch();
+                }
+                player.start();
+            } catch (Throwable t) {
+                Debug.println("PPTX_MENU_PLAY_FAILED video=" + videoFile + " playlist=" + playlistId);
+                if (Debug.LEVEL > 0) { Debug.printStackTrace(t); }
+            }
         }
         JAVA_COMMAND_BODY
     }
@@ -57,27 +99,35 @@ segment S:slide3
     }
 ;
 
+# Empty segment used before video playback so GRIN has one frame to
+# erase any selected/activated button images from the graphics plane.
+segment S:VideoPlayback
+    active {
+    } setup {
+    }
+;
+
 feature fixed_image F:slide1.BG 0 0 "assets/slide1_bg.png" ;
-feature fixed_image F:slide1.Extras.Selected 108 573 "assets/slide1_Extras_selected.png" ;
-feature fixed_image F:slide1.Extras.Activated 108 573 "assets/slide1_Extras_activated.png" ;
-feature fixed_image F:slide1.Main_Feature.Selected 863 573 "assets/slide1_Main_Feature_selected.png" ;
-feature fixed_image F:slide1.Main_Feature.Activated 863 573 "assets/slide1_Main_Feature_activated.png" ;
+feature fixed_image F:slide1.Extras.Selected 166 863 "assets/slide1_Extras_selected.png" ;
+feature fixed_image F:slide1.Extras.Activated 166 863 "assets/slide1_Extras_activated.png" ;
+feature fixed_image F:slide1.Main_Feature.Selected 1298 863 "assets/slide1_Main_Feature_selected.png" ;
+feature fixed_image F:slide1.Main_Feature.Activated 1298 863 "assets/slide1_Main_Feature_activated.png" ;
 
 feature fixed_image F:slide2.BG 0 0 "assets/slide2_bg.png" ;
-feature fixed_image F:slide2.Video_1.Selected 108 573 "assets/slide2_Video_1_selected.png" ;
-feature fixed_image F:slide2.Video_1.Activated 108 573 "assets/slide2_Video_1_activated.png" ;
-feature fixed_image F:slide2.Video_2.Selected 863 573 "assets/slide2_Video_2_selected.png" ;
-feature fixed_image F:slide2.Video_2.Activated 863 573 "assets/slide2_Video_2_activated.png" ;
-feature fixed_image F:slide2.Main_Menu.Selected 486 573 "assets/slide2_Main_Menu_selected.png" ;
-feature fixed_image F:slide2.Main_Menu.Activated 486 573 "assets/slide2_Main_Menu_activated.png" ;
+feature fixed_image F:slide2.Video_1.Selected 166 863 "assets/slide2_Video_1_selected.png" ;
+feature fixed_image F:slide2.Video_1.Activated 166 863 "assets/slide2_Video_1_activated.png" ;
+feature fixed_image F:slide2.Video_2.Selected 1298 863 "assets/slide2_Video_2_selected.png" ;
+feature fixed_image F:slide2.Video_2.Activated 1298 863 "assets/slide2_Video_2_activated.png" ;
+feature fixed_image F:slide2.Main_Menu.Selected 732 863 "assets/slide2_Main_Menu_selected.png" ;
+feature fixed_image F:slide2.Main_Menu.Activated 732 863 "assets/slide2_Main_Menu_activated.png" ;
 
 feature fixed_image F:slide3.BG 0 0 "assets/slide3_bg.png" ;
-feature fixed_image F:slide3.Video_3.Selected 805 137 "assets/slide3_Video_3_selected.png" ;
-feature fixed_image F:slide3.Video_3.Activated 805 137 "assets/slide3_Video_3_activated.png" ;
-feature fixed_image F:slide3.Video_4.Selected 805 427 "assets/slide3_Video_4_selected.png" ;
-feature fixed_image F:slide3.Video_4.Activated 805 427 "assets/slide3_Video_4_activated.png" ;
-feature fixed_image F:slide3.Main_Menu.Selected 485 573 "assets/slide3_Main_Menu_selected.png" ;
-feature fixed_image F:slide3.Main_Menu.Activated 485 573 "assets/slide3_Main_Menu_activated.png" ;
+feature fixed_image F:slide3.Video_3.Selected 1211 210 "assets/slide3_Video_3_selected.png" ;
+feature fixed_image F:slide3.Video_3.Activated 1211 210 "assets/slide3_Video_3_activated.png" ;
+feature fixed_image F:slide3.Video_4.Selected 1211 645 "assets/slide3_Video_4_selected.png" ;
+feature fixed_image F:slide3.Video_4.Activated 1211 645 "assets/slide3_Video_4_activated.png" ;
+feature fixed_image F:slide3.Main_Menu.Selected 732 863 "assets/slide3_Main_Menu_selected.png" ;
+feature fixed_image F:slide3.Main_Menu.Activated 732 863 "assets/slide3_Main_Menu_activated.png" ;
 
 feature assembly F:slide1.Buttons {
     Extras_selected F:slide1.Extras.Selected
@@ -99,8 +149,8 @@ rc_handler visual R:slide1
         Main_Feature Main_Feature_activated { activate_segment S:slide3 ; }
     }
     mouse {
-        Extras ( 116 581 435 668 )
-        Main_Feature ( 871 581 1190 668 )
+        Extras ( 174 871 653 1002 )
+        Main_Feature ( 1306 871 1785 1002 )
     }
 ;
 
@@ -114,7 +164,7 @@ feature assembly F:slide2.Buttons {
 } ;
 
 rc_handler visual R:slide2
-    grid { { Video_1 Video_2 Main_Menu } }
+    grid { { Video_1 Main_Menu Video_2 } }
     assembly F:slide2.Buttons
         start_selected true
     select {
@@ -123,14 +173,14 @@ rc_handler visual R:slide2
         Main_Menu Main_Menu_selected
     }
     activate {
-        Video_1 Video_1_activated { java_command [[ playVideo("Video 1.mkv", "00001"); ]] activate_segment S:slide2 ; }
-        Video_2 Video_2_activated { java_command [[ playVideo("Video 2.mp4", "00002"); ]] activate_segment S:slide2 ; }
+        Video_1 Video_1_activated { activate_segment S:VideoPlayback ; sync_display ; java_command [[ playVideo("Video 1.mkv", "00001"); ]] }
+        Video_2 Video_2_activated { activate_segment S:VideoPlayback ; sync_display ; java_command [[ playVideo("Video 2.mp4", "00002"); ]] }
         Main_Menu Main_Menu_activated { activate_segment S:slide1 ; }
     }
     mouse {
-        Video_1 ( 116 581 435 668 )
-        Video_2 ( 871 581 1190 668 )
-        Main_Menu ( 494 581 813 668 )
+        Video_1 ( 174 871 653 1002 )
+        Video_2 ( 1306 871 1785 1002 )
+        Main_Menu ( 740 871 1219 1002 )
     }
 ;
 
@@ -144,7 +194,7 @@ feature assembly F:slide3.Buttons {
 } ;
 
 rc_handler visual R:slide3
-    grid { { Video_3 Video_4 Main_Menu } }
+    grid { { Video_3 } { Video_4 } { Main_Menu } }
     assembly F:slide3.Buttons
         start_selected true
     select {
@@ -153,14 +203,14 @@ rc_handler visual R:slide3
         Main_Menu Main_Menu_selected
     }
     activate {
-        Video_3 Video_3_activated { java_command [[ playVideo("Video 3.mkv", "00003"); ]] activate_segment S:slide3 ; }
-        Video_4 Video_4_activated { java_command [[ playVideo("Video 4.mp4", "00004"); ]] activate_segment S:slide3 ; }
+        Video_3 Video_3_activated { activate_segment S:VideoPlayback ; sync_display ; java_command [[ playVideo("Video 3.mkv", "00003"); ]] }
+        Video_4 Video_4_activated { activate_segment S:VideoPlayback ; sync_display ; java_command [[ playVideo("Video 4.mp4", "00004"); ]] }
         Main_Menu Main_Menu_activated { activate_segment S:slide1 ; }
     }
     mouse {
-        Video_3 ( 813 145 1132 232 )
-        Video_4 ( 813 435 1132 522 )
-        Main_Menu ( 493 581 812 668 )
+        Video_3 ( 1219 218 1698 349 )
+        Video_4 ( 1219 653 1698 784 )
+        Main_Menu ( 740 871 1219 1002 )
     }
 ;
 

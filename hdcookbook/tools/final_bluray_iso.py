@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -92,16 +93,64 @@ def tsmuxer_tracks(ts_muxer: Path, encoded: Path):
     return video, audio
 
 
-def write_meta(path: Path, encoded: Path, ts_muxer: Path):
+def subtitle_language(path: Path) -> str:
+    stem = path.stem.lower()
+    if 'spanish' in stem or ' esp' in stem or '.es' in stem:
+        return 'spa'
+    if 'french' in stem or ' fra' in stem or ' fre' in stem or '.fr' in stem:
+        return 'fra'
+    if 'german' in stem or ' ger' in stem or ' deu' in stem or '.de' in stem:
+        return 'deu'
+    if 'english' in stem or ' eng' in stem or '.en' in stem:
+        return 'eng'
+    return 'eng'
+
+
+def matching_subtitles(project: Path, video_file: str, manifest: dict) -> list[dict]:
+    """Return sidecar subtitles for a video, preferring manifest metadata.
+
+    Blu-ray muxing is done per title, so sidecars named like `Video 4.srt` or
+    `Video 4 Spanish.srt` should be included with `Video 4.mp4`.
+    """
+    video_stem = Path(video_file).stem.lower()
+    manifest_rows = {v.get('file'): v for v in manifest.get('videos', [])}
+    rows = []
+    for sub in manifest_rows.get(video_file, {}).get('sidecar_subtitles', []) or []:
+        p = project / sub.get('file', '')
+        if p.exists():
+            rows.append({'path': p, 'language': sub.get('language') or subtitle_language(p)})
+    if not rows:
+        for p in sorted(project.iterdir(), key=lambda x: x.name.lower()):
+            if p.suffix.lower() not in ('.srt', '.sup'):
+                continue
+            if p.stem.lower().startswith(video_stem):
+                rows.append({'path': p, 'language': subtitle_language(p)})
+    # Put the exact same-name subtitle first so it becomes the first selectable
+    # subtitle track; keep alternates like "Spanish" after it.
+    rows.sort(key=lambda r: (Path(r['path']).stem.lower() != video_stem, Path(r['path']).name.lower()))
+    return rows
+
+
+def write_meta(path: Path, encoded: Path, ts_muxer: Path, subtitles: list[dict]|None = None):
     video, audio = tsmuxer_tracks(ts_muxer, encoded)
     audio_delay = audio.get('delay')
     audio_params = f'track={audio["track"]}, lang=eng'
     if audio_delay:
         audio_params += f', timeshift={audio_delay}'
-    path.write_text(f'''MUXOPT --blu-ray --vbr --auto-chapters=5 --new-audio-pes
-V_MPEG4/ISO/AVC, "{encoded}", track={video['track']}, fps=23.976, insertSEI, contSPS
-A_AC3, "{encoded}", {audio_params}
-''')
+    lines = [
+        'MUXOPT --blu-ray --vbr --auto-chapters=5 --new-audio-pes',
+        f'V_MPEG4/ISO/AVC, "{encoded}", track={video["track"]}, fps=23.976, insertSEI, contSPS',
+        f'A_AC3, "{encoded}", {audio_params}',
+    ]
+    for sub in subtitles or []:
+        sub_path = Path(sub['path'])
+        codec = 'S_HDMV/PGS' if sub_path.suffix.lower() == '.sup' else 'S_TEXT/UTF8'
+        lang = (sub.get('language') or subtitle_language(sub_path))[:3]
+        params = f'lang={lang}, video-width=1920, video-height=1080, fps=23.976'
+        if codec == 'S_TEXT/UTF8':
+            params += ', font-name="DejaVu Sans", font-size=45, font-color=0xffffffff, font-border=2, bottom-offset=24'
+        lines.append(f'{codec}, "{sub_path}", {params}')
+    path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
 
 def copytree_contents(src: Path, dst: Path):
@@ -157,6 +206,129 @@ def make_iso(mkisofs_cmd: list[Path|str], disc_root: Path, iso_path: Path, volum
         )
 
 
+def build_pptx_menu(root: Path, project: Path) -> Path:
+    """Regenerate and build the PowerPoint-derived GRIN/BD-J menu."""
+    menu_dir = root / 'xlets' / 'grin_samples' / 'Scripts' / 'PptxMenu'
+    run([root / 'scripts' / 'convert-pptx-menu.sh', project])
+    run(['ant', 'default'], cwd=menu_dir)
+    jar_path = menu_dir / 'build' / '00000.jar'
+    bdjo_path = menu_dir / 'build' / '00000.bdjo'
+    if not jar_path.exists() or not bdjo_path.exists():
+        raise SystemExit(f'PptxMenu build did not create expected {jar_path} and {bdjo_path}')
+    return menu_dir
+
+
+def sign_pptx_menu_jar(root: Path, disc_root: Path, output_root: Path):
+    """Sign the generated menu jar so BD-J/libbluray accepts media control."""
+    security_jar = root / 'bin' / 'security.jar'
+    bc_jar = root / 'bin' / 'bcprov-jdk15-137.jar'
+    jar_path = disc_root / 'BDMV' / 'JAR' / '00000.jar'
+    cert_work = output_root / 'cert-work'
+    cert_work.mkdir(parents=True, exist_ok=True)
+    if not security_jar.exists() or not bc_jar.exists():
+        raise SystemExit(f'Missing BD-J signing tools: {security_jar} or {bc_jar}')
+
+    tools_jar_candidates = []
+    java_home = os.environ.get('JAVA_HOME')
+    if java_home:
+        tools_jar_candidates.append(Path(java_home) / 'lib' / 'tools.jar')
+    tools_jar_candidates.extend([
+        Path('/usr/lib/jvm/default/lib/tools.jar'),
+        Path('/usr/lib/jvm/java-8-openjdk/lib/tools.jar'),
+    ])
+    tools_jar = next((p for p in tools_jar_candidates if p.exists()), None)
+    cp_entries = [security_jar]
+    if tools_jar:
+        cp_entries.append(tools_jar)
+    cp_entries.append(bc_jar)
+    cp = os.pathsep.join(str(p) for p in cp_entries)
+    run(['java', '-cp', cp, 'net.java.bd.tools.security.BDCertGenerator', '-debug', '-root', '56789abc'], cwd=cert_work)
+    run(['java', '-cp', cp, 'net.java.bd.tools.security.BDCertGenerator', '-debug', '-app', '56789abc'], cwd=cert_work)
+    run(['java', '-cp', cp, 'net.java.bd.tools.security.BDSigner', '-debug', jar_path], cwd=cert_work)
+    cert = cert_work / 'app.discroot.crt'
+    if cert.exists():
+        for dst in (disc_root / 'CERTIFICATE' / 'app.discroot.crt', disc_root / 'CERTIFICATE' / 'BACKUP' / 'app.discroot.crt'):
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(cert, dst)
+
+
+def add_pptx_menu_assets_to_jar(menu_dir: Path, jar_path: Path):
+    """Package generated slide PNGs beside pptx-menu.grin in the menu jar."""
+    assets_dir = menu_dir / 'assets'
+    if not assets_dir.exists():
+        raise SystemExit(f'Missing generated PptxMenu assets: {assets_dir}')
+    with zipfile.ZipFile(jar_path, 'a', zipfile.ZIP_DEFLATED) as zf:
+        for asset in sorted(assets_dir.rglob('*')):
+            if asset.is_file():
+                zf.write(asset, asset.relative_to(menu_dir).as_posix())
+
+
+def install_pptx_menu_overlay(root: Path, project: Path, disc_root: Path, output_root: Path):
+    menu_dir = build_pptx_menu(root, project)
+    bdmv = disc_root / 'BDMV'
+    jar_dir = bdmv / 'JAR'
+    bdjo_dir = bdmv / 'BDJO'
+    aux_dir = bdmv / 'AUXDATA'
+    cert_dir = disc_root / 'CERTIFICATE'
+
+    shutil.rmtree(jar_dir, ignore_errors=True)
+    shutil.rmtree(bdjo_dir, ignore_errors=True)
+    jar_dir.mkdir(parents=True, exist_ok=True)
+    bdjo_dir.mkdir(parents=True, exist_ok=True)
+    aux_dir.mkdir(parents=True, exist_ok=True)
+    cert_dir.mkdir(parents=True, exist_ok=True)
+    (cert_dir / 'BACKUP').mkdir(parents=True, exist_ok=True)
+
+    shutil.copy2(menu_dir / 'build' / '00000.jar', jar_dir / '00000.jar')
+    add_pptx_menu_assets_to_jar(menu_dir, jar_dir / '00000.jar')
+    shutil.copy2(menu_dir / 'build' / '00000.bdjo', bdjo_dir / '00000.bdjo')
+
+    # The generated BDJO references default font file 00000.  Keep the sample
+    # font if present; otherwise menu rendering still uses slide PNGs, but some
+    # players expect this file to exist.
+    sample_font = root / 'xlets' / 'hdcookbook_discimage' / 'dist' / 'DiscImage' / 'BDMV' / 'AUXDATA' / '00000.otf'
+    if sample_font.exists() and not (aux_dir / '00000.otf').exists():
+        shutil.copy2(sample_font, aux_dir / '00000.otf')
+
+    sign_pptx_menu_jar(root, disc_root, output_root)
+
+
+def validate_final_disc(disc_root: Path):
+    """Fail fast if legacy sample menu/game artifacts leak into the final disc."""
+    bdmv = disc_root / 'BDMV'
+    jar_dir = bdmv / 'JAR'
+    bdjo_dir = bdmv / 'BDJO'
+    playlist_dir = bdmv / 'PLAYLIST'
+    jar_path = jar_dir / '00000.jar'
+
+    expected_jars = {'00000.jar'}
+    actual_jars = {p.name for p in jar_dir.glob('*.jar')}
+    if actual_jars != expected_jars:
+        raise SystemExit(f'Unexpected BD-J jars in final disc: {sorted(actual_jars)}')
+
+    expected_bdjos = {'00000.bdjo'}
+    actual_bdjos = {p.name for p in bdjo_dir.glob('*.bdjo')}
+    if actual_bdjos != expected_bdjos:
+        raise SystemExit(f'Unexpected BDJO files in final disc: {sorted(actual_bdjos)}')
+
+    if (playlist_dir / '00000.mpls').exists():
+        raise SystemExit('Legacy first-play playlist BDMV/PLAYLIST/00000.mpls must not be present')
+
+    forbidden = ('gunbunny', 'bookmenu', 'Game_', 'Bonus_', 'Scenes_', 'Graphics/Menu')
+    path_hits = [str(p.relative_to(disc_root)) for p in disc_root.rglob('*') if any(s in str(p) for s in forbidden)]
+    if path_hits:
+        raise SystemExit('Legacy sample artifact paths found in final disc: ' + ', '.join(path_hits[:20]))
+
+    with zipfile.ZipFile(jar_path) as zf:
+        names = zf.namelist()
+    jar_hits = [n for n in names if any(s in n for s in forbidden)]
+    if jar_hits:
+        raise SystemExit('Legacy sample artifacts found in final menu jar: ' + ', '.join(jar_hits[:20]))
+    slide_assets = [n for n in names if n.startswith('assets/slide') and n.endswith('.png')]
+    if not {'assets/slide1_bg.png', 'assets/slide2_bg.png', 'assets/slide3_bg.png'}.issubset(set(slide_assets)):
+        raise SystemExit('Generated PPTX slide background assets are missing from final menu jar')
+
+
 def main():
     ap = argparse.ArgumentParser(description='Assemble final Blu-ray BDMV tree and ISO from encoded videos + HD Cook Book menu overlay.')
     ap.add_argument('project_dir')
@@ -205,6 +377,11 @@ def main():
     with zipfile.ZipFile(overlay_zip) as zf:
         zf.extractall(disc_root)
 
+    install_pptx_menu_overlay(root, project, disc_root, output_root)
+    legacy_first_play = disc_root / 'BDMV' / 'PLAYLIST' / '00000.mpls'
+    if legacy_first_play.exists():
+        legacy_first_play.unlink()
+
     manifest_path = project / 'build' / 'bluray-media' / 'media-manifest.json'
     manifest = read_json(manifest_path) if manifest_path.exists() else {'videos': []}
     durations = {v['file']: float(v.get('duration_seconds') or 0) for v in manifest.get('videos', [])}
@@ -218,7 +395,8 @@ def main():
         title_dir = mux_work / playlist_id
         title_dir.mkdir(parents=True, exist_ok=True)
         meta = title_dir / f'{playlist_id}.meta'
-        write_meta(meta, encoded, ts_muxer)
+        subtitles = matching_subtitles(project, row.get('video_file', ''), manifest)
+        write_meta(meta, encoded, ts_muxer, subtitles)
         run([ts_muxer, meta, title_dir / 'bd'])
 
         bdmv = title_dir / 'bd' / 'BDMV'
@@ -235,19 +413,14 @@ def main():
         shutil.copy2(stream_src, stream_dst)
         patch_clip_id(clpi_src, clpi_dst, '00000', playlist_id)
         patch_clip_id(mpls_src, mpls_dst, '00000', playlist_id)
-        summary.append({**row, **info, 'stream': str(stream_dst), 'playlist': str(mpls_dst), 'clipinf': str(clpi_dst)})
-
-    # The HD Cook Book overlay includes a legacy first-play playlist named
-    # 00000.mpls. If left untouched, libbluray/VLC tries to open missing
-    # CLIPINF/00000.clpi and STREAM/00000.m2ts before BD-J can settle, causing
-    # a fatal playback stop. Point that compatibility playlist at the first real
-    # title instead of duplicating gigabytes of video as 00000.m2ts.
-    if summary:
-        first_playlist_id = str(summary[0]['playlist_id']).zfill(5)
-        first_play_playlist = disc_root / 'BDMV' / 'PLAYLIST' / '00000.mpls'
-        if first_play_playlist.exists() and first_playlist_id != '00000':
-            patched = first_play_playlist.read_bytes().replace(b'00000', first_playlist_id.encode('ascii'))
-            first_play_playlist.write_bytes(patched)
+        summary.append({
+            **row,
+            **info,
+            'stream': str(stream_dst),
+            'playlist': str(mpls_dst),
+            'clipinf': str(clpi_dst),
+            'subtitles': [{'file': s['path'].name, 'language': s.get('language') or subtitle_language(s['path'])} for s in subtitles],
+        })
 
     backup = disc_root / 'BDMV' / 'BACKUP'
     shutil.rmtree(backup, ignore_errors=True)
@@ -260,6 +433,8 @@ def main():
         src = disc_root / 'BDMV' / dirname
         if src.exists():
             copytree_contents(src, backup / dirname)
+
+    validate_final_disc(disc_root)
 
     report = {
         'project_dir': str(project),
