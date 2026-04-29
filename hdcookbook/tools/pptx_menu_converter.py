@@ -154,6 +154,40 @@ def button_grid(buttons):
     return [sorted(row, key=lambda b:b['rect_px']['x']) for row in rows]
 
 
+def visual_rc_grid(buttons):
+    """Return a rectangular GRIN visual-rc grid.
+
+    GRIN requires every grid row to have the same number of cells. PowerPoint
+    menus often have an uneven layout (for example a single "Main Menu" button
+    above two video buttons), so pad missing cells with coordinate placeholders.
+    """
+    rows = button_grid(buttons)
+    if not rows:
+        return []
+    width = max(len(row) for row in rows)
+    if width <= 1:
+        return [[row[0]['id']] for row in rows]
+
+    widest = max(rows, key=len)
+    centers = [b['rect_px']['x'] + b['rect_px']['w'] / 2 for b in widest]
+    grid=[]
+    for row_index, row in enumerate(rows):
+        cells=[None] * width
+        used=set()
+        for btn in row:
+            cx=btn['rect_px']['x'] + btn['rect_px']['w'] / 2
+            col=min((i for i in range(width) if i not in used), key=lambda i: abs(cx - centers[i]))
+            cells[col]=btn['id']
+            used.add(col)
+        actual_cols=[i for i, cell in enumerate(cells) if cell is not None]
+        for col in range(width):
+            if cells[col] is None:
+                target_col=min(actual_cols, key=lambda i: abs(i - col))
+                cells[col]=f'( {target_col} {row_index} )'
+        grid.append(cells)
+    return grid
+
+
 def generate_show(model, out: Path):
     lines=['# Generated from PowerPoint by tools/pptx_menu_converter.py','show','']
     lines += [
@@ -248,7 +282,7 @@ def generate_show(model, out: Path):
             lines.append(f'    {bid}_activated F:{sid}.{bid}.Activated')
         lines += ['} ;','']
         if not buttons: continue
-        grid_rows=' '.join('{ ' + ' '.join(btn['id'] for btn in row) + ' }' for row in button_grid(buttons))
+        grid_rows=' '.join('{ ' + ' '.join(row) + ' }' for row in visual_rc_grid(buttons))
         lines += [f'rc_handler visual R:{sid}',f'    grid {{ {grid_rows} }}',f'    assembly F:{sid}.Buttons','        start_selected true','    select {']
         for btn in buttons:
             lines.append(f"        {btn['id']} {btn['id']}_selected")
