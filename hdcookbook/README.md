@@ -101,6 +101,8 @@ Video 4.srt
 
 PowerPoint button labels like `Video 1`, `Video 2`, etc. are mapped to matching media files.
 
+If a video has no matching sidecar subtitle, autopilot can try OpenSubtitles before media analysis. Set `OPENSUBTITLES_API_KEY`, `OPENSUBTITLES_USERNAME`, and `OPENSUBTITLES_PASSWORD` in the environment; optional `OPENSUBTITLES_LANGUAGE` defaults to `en`. If credentials are missing, the lookup is skipped safely and the TUI reports it as an informational preflight note.
+
 ## More documentation
 
 Start here:

@@ -26,6 +26,7 @@ DISC_PRESETS = ['bd25', 'quality']
 SUPPORTED_VIDEO_EXTS = ('.mp4', '.mkv', '.m2ts', '.mov')
 
 WORKFLOW_STEPS = [
+    ('fetch-opensubtitles', 'Fetch missing subtitles'),
     ('analyze', 'Analyze project/media'),
     ('convert-pptx-menu', 'Process menu.pptx'),
     ('get-tsmuxer', 'Check/install tsMuxer'),
@@ -156,6 +157,18 @@ def project_diagnostics(project: Path, root: Path, rows=None, meta=None, cfg=Non
     dupes = [names for names in normalized.values() if len(names) > 1]
     if dupes:
         add('warning', 'Some video filenames normalize to the same title, which can make button matching ambiguous.', 'Rename one of: ' + '; '.join(', '.join(d) for d in dupes[:3]))
+
+    subtitle_exts = {'.srt', '.sup', '.ass', '.ssa'}
+    videos_without_sidecars = []
+    for video in vids:
+        stem = video.stem.lower()
+        has_sidecar = any(p.suffix.lower() in subtitle_exts and p.stem.lower().startswith(stem) for p in project.iterdir())
+        if not has_sidecar:
+            videos_without_sidecars.append(video.name)
+    if videos_without_sidecars and not os.environ.get('OPENSUBTITLES_API_KEY'):
+        add('info', 'No sidecar subtitles found for some videos; OpenSubtitles lookup is disabled because OPENSUBTITLES_API_KEY is not set.', 'Set OPENSUBTITLES_API_KEY plus OPENSUBTITLES_USERNAME/PASSWORD to auto-download .srt files.')
+    elif videos_without_sidecars:
+        add('info', 'Some videos have no sidecar subtitles; autopilot will search OpenSubtitles before analyzing media.', ', '.join(videos_without_sidecars[:6]))
 
     model = None
     if menu.exists() and vids and pptx_menu_converter:
@@ -319,6 +332,9 @@ run_step() {{
 }}
 
 trap 'rc=$?; update_state failed "${{CURRENT_STEP:-unknown}}"; echo "=== WORKFLOW FAILED rc=$rc ==="; exit $rc' ERR
+
+CURRENT_STEP=fetch-opensubtitles
+run_step fetch-opensubtitles {shell_quote(scripts / 'fetch-opensubtitles.sh')} "$PROJECT"
 
 CURRENT_STEP=analyze
 run_step analyze {shell_quote(scripts / 'analyze-bluray-project.sh')} "$PROJECT"

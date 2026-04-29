@@ -66,6 +66,18 @@ Video 2.srt
 ...
 ```
 
+If a video has no matching sidecar subtitle, autopilot can try OpenSubtitles before media analysis. Set these environment variables first:
+
+```bash
+export OPENSUBTITLES_API_KEY='your-api-key'
+export OPENSUBTITLES_USERNAME='your-username'
+export OPENSUBTITLES_PASSWORD='your-password'
+# optional; default is English
+export OPENSUBTITLES_LANGUAGE='en'
+```
+
+Without those credentials the lookup is skipped safely and the TUI shows an informational preflight note.
+
 The workflow writes build outputs under:
 
 ```text
