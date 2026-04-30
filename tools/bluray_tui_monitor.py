@@ -404,6 +404,7 @@ def build_workflow_script(root: Path, project: Path, cfg: dict, state_file: Path
 ROOT={shell_quote(root)}
 PROJECT={project_q}
 STATE={state_q}
+MENU_BACKEND={shell_quote(cfg.get('menu_backend', DEFAULT_MENU_BACKEND))}
 
 update_state() {{
 python3 - "$STATE" "$1" "$2" <<'PY'
@@ -480,8 +481,32 @@ echo "+ {encode_cmd}"
 CURRENT_STEP=create-bluray-authoring-plan
 run_step create-bluray-authoring-plan {shell_quote(scripts / 'create-bluray-authoring-plan.sh')} "$PROJECT"
 
-CURRENT_STEP=build-sample-disc
-run_step build-sample-disc {shell_quote(scripts / 'build-sample-disc.sh')}
+NEEDS_BDJ=0
+if [[ "$MENU_BACKEND" == "bdj" ]]; then
+  NEEDS_BDJ=1
+elif [[ "$MENU_BACKEND" == "auto" ]]; then
+  if python3 - "$ROOT" <<'PY'
+import json, sys
+from pathlib import Path
+path = Path(sys.argv[1]) / 'xlets/grin_samples/Scripts/PptxMenu/menu-compatibility.json'
+data = json.loads(path.read_text())
+raise SystemExit(0 if data.get('hdmv_safe') else 1)
+PY
+  then
+    NEEDS_BDJ=0
+  else
+    NEEDS_BDJ=1
+  fi
+fi
+
+if [[ "$NEEDS_BDJ" == "1" ]]; then
+  CURRENT_STEP=build-sample-disc
+  run_step build-sample-disc {shell_quote(scripts / 'build-sample-disc.sh')}
+else
+  echo
+  echo "=== $(date '+%Y-%m-%d %H:%M:%S') | build-sample-disc ==="
+  echo "Skipping BD-J sample-disc build for menu_backend=$MENU_BACKEND"
+fi
 
 CURRENT_STEP=create-final-bluray-iso
 run_step create-final-bluray-iso {shell_quote(scripts / 'create-final-bluray-iso.sh')} "$PROJECT" --volume-id {shell_quote(disc_title)} --disc-preset {shell_quote(cfg.get('disc_preset', 'bd25'))} --menu-backend {shell_quote(cfg.get('menu_backend', DEFAULT_MENU_BACKEND))}

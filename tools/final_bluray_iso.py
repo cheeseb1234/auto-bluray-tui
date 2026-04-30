@@ -227,15 +227,13 @@ def make_iso(mkisofs_cmd: list[Path|str], disc_root: Path, iso_path: Path, volum
         )
 
 
-def install_menu_backend(root: Path, project: Path, disc_root: Path, output_root: Path, requested_backend: str):
-    """Convert the PPTX once, select the requested backend, and install it."""
-    menu_dir, model, compatibility, selected_backend = convert_pptx_menu(root, project, requested_backend=requested_backend)
+def install_menu_backend(root: Path, project: Path, menu_dir: Path, model: dict, selected_backend: str, disc_root: Path, output_root: Path):
+    """Install the already-selected backend into the final disc tree."""
     backend = backend_for(selected_backend)
     try:
-        install_report = backend.install(root=root, project=project, menu_dir=menu_dir, disc_root=disc_root, output_root=output_root, model=model)
+        return backend.install(root=root, project=project, menu_dir=menu_dir, disc_root=disc_root, output_root=output_root, model=model)
     except MenuBackendError as e:
         raise SystemExit(str(e)) from e
-    return menu_dir, model, compatibility, selected_backend, install_report
 
 
 def refresh_playlist_map(root: Path, project: Path, menu_dir: Path) -> dict:
@@ -251,7 +249,7 @@ def refresh_playlist_map(root: Path, project: Path, menu_dir: Path) -> dict:
     return plan
 
 
-def validate_final_disc(disc_root: Path):
+def validate_final_disc(disc_root: Path, menu_backend: str):
     """Fail fast if legacy sample menu/game artifacts leak into the final disc."""
     bdmv = disc_root / 'BDMV'
     jar_dir = bdmv / 'JAR'
@@ -259,15 +257,16 @@ def validate_final_disc(disc_root: Path):
     playlist_dir = bdmv / 'PLAYLIST'
     jar_path = jar_dir / '00000.jar'
 
-    expected_jars = {'00000.jar'}
-    actual_jars = {p.name for p in jar_dir.glob('*.jar')}
-    if actual_jars != expected_jars:
-        raise SystemExit(f'Unexpected BD-J jars in final disc: {sorted(actual_jars)}')
+    if menu_backend == 'bdj':
+        expected_jars = {'00000.jar'}
+        actual_jars = {p.name for p in jar_dir.glob('*.jar')}
+        if actual_jars != expected_jars:
+            raise SystemExit(f'Unexpected BD-J jars in final disc: {sorted(actual_jars)}')
 
-    expected_bdjos = {'00000.bdjo'}
-    actual_bdjos = {p.name for p in bdjo_dir.glob('*.bdjo')}
-    if actual_bdjos != expected_bdjos:
-        raise SystemExit(f'Unexpected BDJO files in final disc: {sorted(actual_bdjos)}')
+        expected_bdjos = {'00000.bdjo'}
+        actual_bdjos = {p.name for p in bdjo_dir.glob('*.bdjo')}
+        if actual_bdjos != expected_bdjos:
+            raise SystemExit(f'Unexpected BDJO files in final disc: {sorted(actual_bdjos)}')
 
     if (playlist_dir / '00000.mpls').exists():
         raise SystemExit('Legacy first-play playlist BDMV/PLAYLIST/00000.mpls must not be present')
@@ -277,29 +276,30 @@ def validate_final_disc(disc_root: Path):
     if path_hits:
         raise SystemExit('Legacy sample artifact paths found in final disc: ' + ', '.join(path_hits[:20]))
 
-    with zipfile.ZipFile(jar_path) as zf:
-        names = zf.namelist()
-        grin_text = zf.read('pptx-menu.grin').decode('utf-8', errors='ignore') if 'pptx-menu.grin' in names else ''
-    jar_hits = [n for n in names if any(s in n for s in forbidden)]
-    if jar_hits:
-        raise SystemExit('Legacy sample artifacts found in final menu jar: ' + ', '.join(jar_hits[:20]))
+    if menu_backend == 'bdj':
+        with zipfile.ZipFile(jar_path) as zf:
+            names = zf.namelist()
+            grin_text = zf.read('pptx-menu.grin').decode('utf-8', errors='ignore') if 'pptx-menu.grin' in names else ''
+        jar_hits = [n for n in names if any(s in n for s in forbidden)]
+        if jar_hits:
+            raise SystemExit('Legacy sample artifacts found in final menu jar: ' + ', '.join(jar_hits[:20]))
 
-    # The menu can have any number of PPTX slides.  Older validation assumed the
-    # sample 3-slide deck and falsely rejected valid single-slide menus.
-    slide_assets = {n for n in names if n.startswith('assets/slide') and n.endswith('.png')}
-    bg_assets = {n for n in slide_assets if n.rsplit('/', 1)[-1].endswith('_bg.png')}
-    if not bg_assets:
-        raise SystemExit('Generated PPTX slide background assets are missing from final menu jar')
+        # The menu can have any number of PPTX slides.  Older validation assumed the
+        # sample 3-slide deck and falsely rejected valid single-slide menus.
+        slide_assets = {n for n in names if n.startswith('assets/slide') and n.endswith('.png')}
+        bg_assets = {n for n in slide_assets if n.rsplit('/', 1)[-1].endswith('_bg.png')}
+        if not bg_assets:
+            raise SystemExit('Generated PPTX slide background assets are missing from final menu jar')
 
-    referenced_assets = set()
-    for line in grin_text.splitlines():
-        if '"assets/slide' not in line:
-            continue
-        parts = line.split('"')
-        referenced_assets.update(p for p in parts if p.startswith('assets/slide') and p.endswith('.png'))
-    missing_assets = sorted(referenced_assets - slide_assets)
-    if missing_assets:
-        raise SystemExit('Generated PPTX assets are missing from final menu jar: ' + ', '.join(missing_assets[:20]))
+        referenced_assets = set()
+        for line in grin_text.splitlines():
+            if '"assets/slide' not in line:
+                continue
+            parts = line.split('"')
+            referenced_assets.update(p for p in parts if p.startswith('assets/slide') and p.endswith('.png'))
+        missing_assets = sorted(referenced_assets - slide_assets)
+        if missing_assets:
+            raise SystemExit('Generated PPTX assets are missing from final menu jar: ' + ', '.join(missing_assets[:20]))
 
 
 def main():
@@ -322,6 +322,23 @@ def main():
     disc_root = output_root / 'disc-root'
     iso_path = output_root / 'bluray-project.iso'
 
+    menu_dir, menu_model, menu_compatibility, selected_menu_backend = convert_pptx_menu(root, project, requested_backend=args.menu_backend)
+
+    overlay_zip = root / 'xlets' / 'hdcookbook_discimage' / 'HDCookbookDiscImage.zip'
+    if selected_menu_backend == 'bdj' and not overlay_zip.exists():
+        raise SystemExit(f'Missing {overlay_zip}; run build-sample-disc.sh first')
+
+    shutil.rmtree(work, ignore_errors=True)
+    shutil.rmtree(disc_root, ignore_errors=True)
+    mux_work.mkdir(parents=True, exist_ok=True)
+    disc_root.mkdir(parents=True, exist_ok=True)
+
+    if selected_menu_backend == 'bdj':
+        with zipfile.ZipFile(overlay_zip) as zf:
+            zf.extractall(disc_root)
+
+    menu_install = install_menu_backend(root, project, menu_dir, menu_model, selected_menu_backend, disc_root, output_root)
+
     ts_muxer = which(root, 'tsMuxer')
     if not ts_muxer:
         raise SystemExit('Missing tsMuxer; run scripts/get-tsmuxer.sh first')
@@ -333,19 +350,6 @@ def main():
             'to build the BDMV tree only.'
         )
 
-    overlay_zip = root / 'xlets' / 'hdcookbook_discimage' / 'HDCookbookDiscImage.zip'
-    if not overlay_zip.exists():
-        raise SystemExit(f'Missing {overlay_zip}; run build-sample-disc.sh first')
-
-    shutil.rmtree(work, ignore_errors=True)
-    shutil.rmtree(disc_root, ignore_errors=True)
-    mux_work.mkdir(parents=True, exist_ok=True)
-    disc_root.mkdir(parents=True, exist_ok=True)
-
-    with zipfile.ZipFile(overlay_zip) as zf:
-        zf.extractall(disc_root)
-
-    menu_dir, menu_model, menu_compatibility, selected_menu_backend, menu_install = install_menu_backend(root, project, disc_root, output_root, args.menu_backend)
     plan = refresh_playlist_map(root, project, menu_dir)
     rows = plan.get('video_playlist_map') or []
     legacy_first_play = disc_root / 'BDMV' / 'PLAYLIST' / '00000.mpls'
@@ -408,7 +412,7 @@ def main():
         if src.exists():
             copytree_contents(src, backup / dirname)
 
-    validate_final_disc(disc_root)
+    validate_final_disc(disc_root, selected_menu_backend)
 
     report = {
         'project_dir': str(project),
