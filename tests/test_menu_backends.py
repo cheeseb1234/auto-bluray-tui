@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 
-from menu_backends import analyze_menu_compatibility, select_backend, write_compatibility_report
+from menu_backends import HdmvMenuBackend, MenuBackendError, analyze_menu_compatibility, select_backend, write_compatibility_report
 
 
 def safe_model():
@@ -66,6 +66,37 @@ class MenuBackendCompatibilityTests(unittest.TestCase):
             self.assertFalse(report['hdmv_safe'])
             self.assertIn('motion_or_windowed_menu_video', (menu_dir / 'menu-compatibility.md').read_text())
             self.assertTrue((menu_dir / 'menu-compatibility.json').exists())
+
+    def test_hdmv_backend_fails_clearly_for_safe_scaffold(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            menu_dir = Path(tmp)
+            with self.assertRaises(MenuBackendError) as caught:
+                HdmvMenuBackend().install(
+                    root=Path(tmp),
+                    project=Path(tmp),
+                    menu_dir=menu_dir,
+                    disc_root=Path(tmp) / 'disc-root',
+                    output_root=Path(tmp) / 'out',
+                    model=safe_model(),
+                )
+            self.assertIn('actual HDMV compilation is not implemented yet', str(caught.exception))
+            self.assertTrue((menu_dir / 'menu-compatibility.md').exists())
+
+    def test_hdmv_backend_reports_bdj_only_reasons(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            menu_dir = Path(tmp)
+            with self.assertRaises(MenuBackendError) as caught:
+                HdmvMenuBackend().install(
+                    root=Path(tmp),
+                    project=Path(tmp),
+                    menu_dir=menu_dir,
+                    disc_root=Path(tmp) / 'disc-root',
+                    output_root=Path(tmp) / 'out',
+                    model=bdj_only_model(),
+                )
+            message = str(caught.exception)
+            self.assertIn('not HDMV-safe', message)
+            self.assertIn('Looping/menu-window video', message)
 
 
 if __name__ == '__main__':
