@@ -15,6 +15,7 @@ import zipfile
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
+from xml.sax.saxutils import escape
 
 MENU_BACKENDS = ('hdmv', 'bdj', 'auto')
 DEFAULT_MENU_BACKEND = 'hdmv'
@@ -215,24 +216,336 @@ class BdjMenuBackend(MenuBackend):
         return {'backend': self.name, 'menu_dir': str(menu_dir), 'jar': str(jar_dir / '00000.jar'), 'bdjo': str(bdjo_dir / '00000.bdjo')}
 
 
+def _slide_by_id(model: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {str(slide.get('id')): slide for slide in model.get('slides') or []}
+
+
+def _button_hitbox(button: dict[str, Any]) -> dict[str, int] | None:
+    hitbox = button.get('hitbox_px') or button.get('rect_px')
+    if not isinstance(hitbox, dict):
+        return None
+    try:
+        return {k: int(hitbox[k]) for k in ('x', 'y', 'w', 'h')}
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _nearest_button(button: dict[str, Any], buttons: list[dict[str, Any]], direction: str) -> str:
+    """Return a simple geometry-derived HDMV remote-neighbor target."""
+    src = _button_hitbox(button)
+    if not src:
+        return str(button.get('id'))
+    sx = src['x'] + src['w'] / 2
+    sy = src['y'] + src['h'] / 2
+    candidates = []
+    for other in buttons:
+        if other is button:
+            continue
+        dst = _button_hitbox(other)
+        if not dst:
+            continue
+        ox = dst['x'] + dst['w'] / 2
+        oy = dst['y'] + dst['h'] / 2
+        dx = ox - sx
+        dy = oy - sy
+        if direction == 'left' and dx >= 0:
+            continue
+        if direction == 'right' and dx <= 0:
+            continue
+        if direction == 'up' and dy >= 0:
+            continue
+        if direction == 'down' and dy <= 0:
+            continue
+        primary = abs(dx) if direction in ('left', 'right') else abs(dy)
+        secondary = abs(dy) if direction in ('left', 'right') else abs(dx)
+        candidates.append((primary, secondary, str(other.get('id'))))
+    return min(candidates)[2] if candidates else str(button.get('id'))
+
+
+def _hdmv_lite_error(message: str, *, slide: str | None = None, button: str | None = None) -> dict[str, str]:
+    row = {'message': message}
+    if slide:
+        row['slide'] = slide
+    if button:
+        row['button'] = button
+    return row
+
+
+def build_hdmv_lite_model(model: dict[str, Any], menu_dir: Path) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    """Create a conservative HDMV-Lite IR and collect hard validation errors."""
+    slides = model.get('slides') or []
+    by_id = _slide_by_id(model)
+    main_slide_id = str(slides[0].get('id')) if slides else None
+    errors: list[dict[str, str]] = []
+    hdmv_slides: list[dict[str, Any]] = []
+    title_objects: dict[str, dict[str, Any]] = {}
+
+    if not slides:
+        errors.append(_hdmv_lite_error('HDMV-Lite requires at least one static menu slide.'))
+
+    for slide_index, slide in enumerate(slides, 1):
+        slide_id = str(slide.get('id') or f'slide{slide_index}')
+        background = slide.get('background') or {}
+        background_file = background.get('file')
+        if background.get('kind') not in (None, 'static_image'):
+            errors.append(_hdmv_lite_error('HDMV-Lite only supports static image backgrounds.', slide=slide_id))
+        if not background_file:
+            errors.append(_hdmv_lite_error('HDMV-Lite requires one rendered background image per menu page.', slide=slide_id))
+        elif not (menu_dir / background_file).exists():
+            errors.append(_hdmv_lite_error(f'Background asset is missing: {background_file}', slide=slide_id))
+
+        if slide.get('loop_videos') or slide.get('menu_loop_video') or slide.get('menu_loop_action'):
+            errors.append(_hdmv_lite_error('Motion/video-window menus are not supported by HDMV-Lite.', slide=slide_id))
+
+        buttons = slide.get('buttons') or []
+        if not buttons:
+            errors.append(_hdmv_lite_error('HDMV-Lite menu pages require at least one button.', slide=slide_id))
+
+        hdmv_buttons = []
+        ordered_buttons = sorted(buttons, key=lambda b: int(b.get('focus_index') or 9999))
+        for focus_index, button in enumerate(ordered_buttons, 1):
+            button_id = str(button.get('id') or f'button{focus_index}')
+            hitbox = _button_hitbox(button)
+            if not hitbox or hitbox['w'] <= 0 or hitbox['h'] <= 0:
+                errors.append(_hdmv_lite_error('Button is missing a valid rectangular pixel hitbox.', slide=slide_id, button=button_id))
+                hitbox = {'x': 0, 'y': 0, 'w': 1, 'h': 1}
+            if button.get('normal_overlay'):
+                errors.append(_hdmv_lite_error('Button graphics over motion/video windows require BD-J today.', slide=slide_id, button=button_id))
+
+            action = button.get('action') or {}
+            kind = action.get('kind')
+            if kind == 'video':
+                playlist_id = str(action.get('playlist_id') or action.get('playlist') or '').zfill(5)
+                title_number = action.get('title_number')
+                if not playlist_id or playlist_id == '00000' or not title_number:
+                    errors.append(_hdmv_lite_error('Play-title actions require playlist_id and title_number.', slide=slide_id, button=button_id))
+                target_key = playlist_id or str(title_number)
+                title_objects[target_key] = {
+                    'playlist_id': playlist_id,
+                    'title_number': int(title_number or 0),
+                    'video_file': action.get('video_file') or action.get('target'),
+                }
+                hdmv_action = {
+                    'type': 'play_title',
+                    'playlist_id': playlist_id,
+                    'title_number': int(title_number or 0),
+                }
+            elif kind == 'slide':
+                target = str(action.get('target') or action.get('menu_target') or '')
+                if target not in by_id:
+                    errors.append(_hdmv_lite_error(f'Go-to-menu action targets missing slide: {target}', slide=slide_id, button=button_id))
+                hdmv_action = {
+                    'type': 'return_main_menu' if target == main_slide_id else 'go_to_menu',
+                    'target_menu': target,
+                }
+            else:
+                errors.append(_hdmv_lite_error(f'Unsupported HDMV-Lite action kind: {kind!r}', slide=slide_id, button=button_id))
+                hdmv_action = {'type': 'unsupported', 'kind': kind}
+
+            hdmv_buttons.append({
+                'id': button_id,
+                'label': button.get('label') or button_id,
+                'select_value': focus_index,
+                'hitbox_px': hitbox,
+                'neighbors': {
+                    'left': _nearest_button(button, buttons, 'left'),
+                    'right': _nearest_button(button, buttons, 'right'),
+                    'up': _nearest_button(button, buttons, 'up'),
+                    'down': _nearest_button(button, buttons, 'down'),
+                },
+                'action': hdmv_action,
+            })
+
+        hdmv_slides.append({
+            'id': slide_id,
+            'page_id': slide_index,
+            'title': slide.get('title') or slide_id,
+            'background': {
+                'file': background_file,
+                'width': int(background.get('width') or 1920),
+                'height': int(background.get('height') or 1080),
+                'kind': 'static_image',
+            },
+            'buttons': hdmv_buttons,
+        })
+
+    title_rows = sorted(title_objects.values(), key=lambda r: (r.get('title_number') or 0, r.get('playlist_id') or ''))
+    return {
+        'schema_version': 'auto-bluray-hdmv-lite-v1',
+        'backend': 'hdmv',
+        'compiler_status': 'ir_only_first_milestone',
+        'capabilities': {
+            'static_menu_pages': True,
+            'single_background_image_per_page': True,
+            'button_hitboxes': True,
+            'actions': ['play_title', 'go_to_menu', 'return_main_menu'],
+            'motion_video_windows': False,
+            'java': False,
+        },
+        'entry_menu': main_slide_id,
+        'menus': hdmv_slides,
+        'titles': title_rows,
+    }, errors
+
+
+def _write_hdmv_lite_index_xml(path: Path, title_count: int):
+    title_entries = []
+    for i in range(title_count):
+        mobj_id = i + 1
+        title_entries.append(f"""            <title>
+                <indexObject xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:type=\"HDMVIndexObject\">
+                    <HDMVName>0x{mobj_id:x}</HDMVName>
+                    <playbackType>HDMVPlayback_MOVIE</playbackType>
+                </indexObject>
+                <titleAccessType>V_00</titleAccessType>
+            </title>""")
+    path.write_text(f"""<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
+<index>
+    <appInfo/>
+    <extensionData/>
+    <indexes>
+        <firstPlayback>
+            <firstPlaybackObject xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:type=\"HDMVIndexObject\">
+                <HDMVName>0x0</HDMVName>
+                <playbackType>HDMVPlayback_INTERACTIVE</playbackType>
+            </firstPlaybackObject>
+        </firstPlayback>
+        <topMenu>
+            <topMenuObject xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:type=\"HDMVIndexObject\">
+                <HDMVName>0x0</HDMVName>
+                <playbackType>HDMVPlayback_INTERACTIVE</playbackType>
+            </topMenuObject>
+        </topMenu>
+        <titles>
+{chr(10).join(title_entries)}
+        </titles>
+    </indexes>
+    <paddingN1>0</paddingN1>
+    <paddingN2>0</paddingN2>
+    <paddingN3>0</paddingN3>
+    <version>0200</version>
+</index>
+""", encoding='utf-8')
+
+
+def _write_hdmv_lite_movieobject_xml(path: Path, hdmv_model: dict[str, Any]):
+    objects = []
+    object_count = 1 + len(hdmv_model.get('titles') or [])
+    for mobj_id in range(object_count):
+        note = 'Top menu IG program placeholder' if mobj_id == 0 else f'Title {mobj_id} playback command placeholder'
+        objects.append(f"""        <!-- {escape(note)}. The HDMV-Lite first milestone emits IR and static navigation metadata; IG/action bytecode compilation follows. -->
+        <movieObject mobjId=\"{mobj_id}\">
+            <navigationCommands commandId=\"0\">
+                <command>00000000 00000000 00000000</command>
+            </navigationCommands>
+            <terminalInfo>
+                <menuCallMask>false</menuCallMask>
+                <resumeIntentionFlag>false</resumeIntentionFlag>
+                <titleSearchMask>false</titleSearchMask>
+            </terminalInfo>
+        </movieObject>""")
+    path.write_text(f"""<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
+<movieObjectFile>
+    <version>0200</version>
+    <movieObjects>
+{chr(10).join(objects)}
+    </movieObjects>
+    <extensionData/>
+    <paddingsN1>0</paddingsN1>
+    <paddingsN2>0</paddingsN2>
+</movieObjectFile>
+""", encoding='utf-8')
+
+
+def _try_compile_hdmv_xml(root: Path, xml_path: Path, binary_path: Path) -> bool:
+    tool_name = 'index' if xml_path.name == 'index.xml' else 'movieobject'
+    jar_name = 'index.jar' if tool_name == 'index' else 'movieobject.jar'
+    jar_path = root / 'DiscCreationTools' / tool_name / 'dist' / jar_name
+    if not jar_path.exists():
+        return False
+    try:
+        run(['java', '-jar', jar_path, xml_path, binary_path])
+        return binary_path.exists()
+    except subprocess.CalledProcessError:
+        return False
+
+
 class HdmvMenuBackend(MenuBackend):
     name = 'hdmv'
-    description = 'HDMV-Lite scaffold; validates compatibility but does not compile HDMV IG/MovieObject artifacts yet.'
+    description = 'HDMV-Lite first milestone: static menu IR, no Java, clear fallback for unsupported features.'
 
     def install(self, *, root: Path, project: Path, menu_dir: Path, disc_root: Path, output_root: Path, model: dict[str, Any]) -> dict[str, Any]:
         report = write_compatibility_report(menu_dir, model, requested_backend='hdmv', selected_backend='hdmv')
         if not report.get('hdmv_safe'):
             reasons = [r['detail'] for r in report.get('bdj_required_features', []) + report.get('unsupported_features', [])]
             raise MenuBackendError(
-                'HDMV menu backend was selected, but this PowerPoint menu is not HDMV-safe. '\
-                'Use --menu-backend bdj or --menu-backend auto, or remove BD-J-only features. '\
+                'HDMV menu backend was selected, but this PowerPoint menu is not HDMV-safe. '
+                'Use --menu-backend bdj or --menu-backend auto, or remove BD-J-only features. '
                 'Compatibility report: ' + str(menu_dir / 'menu-compatibility.md') + '\n- ' + '\n- '.join(reasons)
             )
-        raise MenuBackendError(
-            'HDMV-Lite menu backend is scaffolded but actual HDMV compilation is not implemented yet. '\
-            'The menu model validates as HDMV-safe, and a compatibility report was written to '\
-            f'{menu_dir / "menu-compatibility.md"}. Use --menu-backend bdj for a working disc until the HDMV-Lite compiler milestone lands.'
+
+        hdmv_model, errors = build_hdmv_lite_model(model, menu_dir)
+        if errors:
+            details = '\n- '.join(e['message'] for e in errors)
+            raise MenuBackendError(
+                'HDMV-Lite menu backend was selected, but this menu exceeds the first milestone scope. '
+                'Supported scope: static menu pages, one background image per page, rectangular button hitboxes, '
+                'and play-title/go-to-menu/return-main-menu actions.\n- ' + details
+            )
+
+        bdmv = disc_root / 'BDMV'
+        shutil.rmtree(bdmv / 'JAR', ignore_errors=True)
+        shutil.rmtree(bdmv / 'BDJO', ignore_errors=True)
+        for dirname in ('AUXDATA', 'BACKUP', 'CLIPINF', 'PLAYLIST', 'STREAM'):
+            (bdmv / dirname).mkdir(parents=True, exist_ok=True)
+        (disc_root / 'CERTIFICATE' / 'BACKUP').mkdir(parents=True, exist_ok=True)
+
+        package_dir = output_root / 'hdmv-lite'
+        assets_dir = package_dir / 'assets'
+        package_dir.mkdir(parents=True, exist_ok=True)
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        for page in hdmv_model.get('menus') or []:
+            background = page.get('background') or {}
+            background_file = background.get('file')
+            if background_file:
+                src = menu_dir / background_file
+                dst = assets_dir / Path(background_file).name
+                if src.exists():
+                    shutil.copy2(src, dst)
+                background['package_file'] = str(dst.relative_to(package_dir))
+
+        (package_dir / 'hdmv-lite-menu.json').write_text(json.dumps(hdmv_model, indent=2) + '\n', encoding='utf-8')
+        (package_dir / 'README.md').write_text(
+            '# HDMV-Lite menu package\n\n'
+            'Generated by the first HDMV-Lite backend milestone.\n\n'
+            '- static menu/page/button/action IR\n'
+            '- no BD-J/JAR/BDJO payloads\n'
+            '- Java-free index/MovieObject skeletons when DiscCreationTools are available\n\n'
+            'Interactive Graphics stream and final HDMV command bytecode compilation are the next milestone.\n',
+            encoding='utf-8',
         )
+        _write_hdmv_lite_index_xml(package_dir / 'index.xml', len(hdmv_model.get('titles') or []))
+        _write_hdmv_lite_movieobject_xml(package_dir / 'MovieObject.xml', hdmv_model)
+        compiled_index = _try_compile_hdmv_xml(root, package_dir / 'index.xml', bdmv / 'index.bdmv')
+        compiled_mobj = _try_compile_hdmv_xml(root, package_dir / 'MovieObject.xml', bdmv / 'MovieObject.bdmv')
+
+        for name in ('index.bdmv', 'MovieObject.bdmv'):
+            src = bdmv / name
+            if src.exists():
+                shutil.copy2(src, bdmv / 'BACKUP' / name)
+
+        return {
+            'backend': self.name,
+            'menu_dir': str(menu_dir),
+            'hdmv_lite_package': str(package_dir),
+            'hdmv_lite_model': str(package_dir / 'hdmv-lite-menu.json'),
+            'index_xml': str(package_dir / 'index.xml'),
+            'movieobject_xml': str(package_dir / 'MovieObject.xml'),
+            'index_bdmv': str(bdmv / 'index.bdmv') if compiled_index else None,
+            'movieobject_bdmv': str(bdmv / 'MovieObject.bdmv') if compiled_mobj else None,
+            'java_payload': False,
+            'compiler_status': hdmv_model['compiler_status'],
+        }
 
 
 def backend_for(name: str) -> MenuBackend:

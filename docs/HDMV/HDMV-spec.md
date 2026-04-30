@@ -125,9 +125,9 @@ BDedit and DVDLogic IG Editor are useful external oracle/reference tools, not UX
    - movie objects/commands
    - playlists/playitems/clip refs
    - IG display set/pages/BOGs/buttons/objects/palettes/sounds
-3. First backend milestone can emit a human-reviewable HDMV export package before compiling binaries.
-4. Later compiler writes `index.bdmv`, `MovieObject.bdmv`, IG stream/assets, and updates playlists/clip info coherently.
-5. Add validation commands and real-player compatibility matrix before making HDMV the true working default.
+3. First backend milestone emits a human-reviewable HDMV-Lite export package (`hdmv-lite-menu.json`, copied static backgrounds, `index.xml`, `MovieObject.xml`) and compiles Java-free `index.bdmv` / `MovieObject.bdmv` skeletons when DiscCreationTools are available.
+4. Later compiler writes the real IG stream/button object data and replaces placeholder MovieObject command bytecode with functional play/page commands.
+5. Add validation commands and real-player compatibility matrix before claiming HDMV menu playback compatibility as the true working default.
 
 ## Current caution
 

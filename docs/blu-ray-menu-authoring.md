@@ -94,22 +94,32 @@ The TUI persists the same setting in `build/bluray-media/encode-options.json`; p
 
 ### Current HDMV-Lite status
 
-This first pass is architecture and validation scaffolding, not full HDMV authoring. The HDMV backend currently writes compatibility reports and refuses to produce incomplete HDMV artifacts. Planned HDMV-Lite milestones are documented in `docs/HDMV/HDMV plan.md`.
+The HDMV backend now implements the first conservative HDMV-Lite milestone. It accepts HDMV-safe neutral menu models and emits a Java-free HDMV-Lite authoring package under `build/final-bluray/hdmv-lite/` containing:
 
-HDMV-safe in the current model:
+- `hdmv-lite-menu.json` static menu/page/button/action IR
+- copied static background assets
+- `index.xml` and `MovieObject.xml` skeletons
+- `index.bdmv` / `MovieObject.bdmv` when the bundled DiscCreationTools converters are available
 
-- static slide backgrounds
+This is still not a full Interactive Graphics compiler. The generated package proves the static menu model, hitboxes, and simple actions are representable; final IG stream and HDMV command bytecode compilation are the next milestone.
+
+HDMV-Lite accepted in the current model:
+
+- static menu pages
+- one rendered background image per page
 - rectangular button hitboxes
 - geometry-derived focus order / neighbor navigation
-- simple play-title actions mapped to playlists
+- simple play-title actions mapped to playlists/title numbers
 - simple go-to-menu/page actions
+- return-to-main-menu actions as navigation back to the first menu page
+- no BD-J/JAR/BDJO payloads
 
 BD-J-required in the current implementation:
 
 - looping/motion/windowed menu video
-- Java media control behavior such as current loop playback and return-to-menu implementation
+- Java media control behavior beyond the static HDMV-Lite subset
 - button graphics layered over transparent video windows
-- any custom action not representable as play-title or go-to-menu
+- any custom action not representable as play-title, go-to-menu, or return-main-menu
 
 ### Tradeoffs
 

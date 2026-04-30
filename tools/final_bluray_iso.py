@@ -300,6 +300,11 @@ def validate_final_disc(disc_root: Path, menu_backend: str):
         missing_assets = sorted(referenced_assets - slide_assets)
         if missing_assets:
             raise SystemExit('Generated PPTX assets are missing from final menu jar: ' + ', '.join(missing_assets[:20]))
+    elif menu_backend == 'hdmv':
+        if jar_dir.exists() and any(jar_dir.glob('*.jar')):
+            raise SystemExit('HDMV backend must not leave BD-J JAR payloads in the final disc')
+        if bdjo_dir.exists() and any(bdjo_dir.glob('*.bdjo')):
+            raise SystemExit('HDMV backend must not leave BDJO payloads in the final disc')
 
 
 def main():

@@ -1,0 +1,105 @@
+{
+  "schema_version": "auto-bluray-menu-model-v1",
+  "model_kind": "backend_neutral_menu",
+  "coordinate_spaces": {
+    "rendered_px": {
+      "width": 1920,
+      "height": 1080
+    }
+  },
+  "slides": [
+    {
+      "id": "slide1",
+      "title": "Main Menu",
+      "background": {
+        "file": "assets/slide1_bg.png",
+        "width": 1920,
+        "height": 1080,
+        "kind": "static_image"
+      },
+      "focus_order": [
+        "play_feature",
+        "extras"
+      ],
+      "buttons": [
+        {
+          "id": "play_feature",
+          "label": "Play Feature",
+          "focus_index": 1,
+          "hitbox_px": {
+            "x": 720,
+            "y": 420,
+            "w": 480,
+            "h": 90
+          },
+          "action": {
+            "kind": "video",
+            "type": "play_title",
+            "target": "Feature.mkv",
+            "video_file": "Feature.mkv",
+            "playlist_id": "00001",
+            "playlist": "00001",
+            "title_number": 1
+          }
+        },
+        {
+          "id": "extras",
+          "label": "Extras",
+          "focus_index": 2,
+          "hitbox_px": {
+            "x": 720,
+            "y": 540,
+            "w": 480,
+            "h": 90
+          },
+          "action": {
+            "kind": "slide",
+            "type": "go_to_menu",
+            "target": "slide2",
+            "menu_target": "slide2"
+          }
+        }
+      ]
+    },
+    {
+      "id": "slide2",
+      "title": "Extras",
+      "background": {
+        "file": "assets/slide2_bg.png",
+        "width": 1920,
+        "height": 1080,
+        "kind": "static_image"
+      },
+      "focus_order": [
+        "return_main"
+      ],
+      "buttons": [
+        {
+          "id": "return_main",
+          "label": "Main Menu",
+          "focus_index": 1,
+          "hitbox_px": {
+            "x": 720,
+            "y": 780,
+            "w": 480,
+            "h": 90
+          },
+          "action": {
+            "kind": "slide",
+            "type": "return_main_menu",
+            "target": "slide1",
+            "menu_target": "slide1"
+          }
+        }
+      ]
+    }
+  ],
+  "playlists": [
+    {
+      "playlist_id": "00001",
+      "title_number": 1,
+      "video_file": "Feature.mkv",
+      "kind": "title"
+    }
+  ]
+}
