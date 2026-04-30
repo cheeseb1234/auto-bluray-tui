@@ -5,6 +5,12 @@ import difflib, json, re, shutil, subprocess, sys, tempfile, zipfile, xml.etree.
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
+try:
+    from menu_backends import analyze_menu_compatibility, write_compatibility_report
+except Exception:
+    analyze_menu_compatibility = None
+    write_compatibility_report = None
+
 NS = {
     'a':'http://schemas.openxmlformats.org/drawingml/2006/main',
     'p':'http://schemas.openxmlformats.org/presentationml/2006/main',
@@ -388,6 +394,59 @@ def visual_rc_grid(buttons):
     return grid
 
 
+def add_neutral_menu_metadata(model, assets: Path, target=(1920,1080)):
+    """Decorate the extracted PPTX model with backend-neutral authoring fields."""
+    model['schema_version'] = 'auto-bluray-menu-model-v1'
+    model['model_kind'] = 'backend_neutral_menu'
+    model['coordinate_spaces'] = {
+        'source_emu': {'width': model['source_size_emu'][0], 'height': model['source_size_emu'][1]},
+        'rendered_px': {'width': target[0], 'height': target[1]},
+    }
+    playlists = {}
+    for slide in model.get('slides', []):
+        sid = slide['id']
+        bg_rel = f'assets/{sid}_bg.png'
+        slide['background'] = {'file': bg_rel, 'width': target[0], 'height': target[1], 'kind': 'static_image'}
+        grid = button_grid(slide.get('buttons', []))
+        focus_order = [btn['id'] for row in grid for btn in row]
+        slide['focus_order'] = focus_order
+        for index, btn in enumerate(slide.get('buttons', []), 1):
+            btn['hitbox_emu'] = btn.get('rect_emu')
+            btn['hitbox_px'] = btn.get('rect_px')
+            btn['focus_index'] = focus_order.index(btn['id']) + 1 if btn['id'] in focus_order else index
+            action = btn.get('action') or {}
+            action.setdefault('type', 'play_title' if action.get('kind') == 'video' else 'go_to_menu' if action.get('kind') == 'slide' else action.get('kind', 'unknown'))
+            if action.get('kind') == 'video':
+                action.setdefault('video_target', action.get('target'))
+                action.setdefault('playlist', action.get('playlist_id'))
+                playlists[action.get('playlist_id')] = {
+                    'playlist_id': action.get('playlist_id'),
+                    'title_number': action.get('title_number'),
+                    'video_file': action.get('video_file') or action.get('target'),
+                    'encoded_m2ts': action.get('encoded_m2ts'),
+                    'kind': 'title',
+                }
+            elif action.get('kind') == 'slide':
+                action.setdefault('menu_target', action.get('target'))
+        if slide.get('menu_loop_action'):
+            loop = slide['menu_loop_action']
+            playlists[loop.get('playlist_id')] = {
+                'playlist_id': loop.get('playlist_id'),
+                'title_number': loop.get('title_number'),
+                'video_file': loop.get('video_file'),
+                'encoded_m2ts': loop.get('encoded_m2ts'),
+                'kind': 'menu_loop',
+            }
+    model['playlists'] = [p for _, p in sorted(playlists.items()) if p.get('playlist_id')]
+    if analyze_menu_compatibility:
+        report = analyze_menu_compatibility(model)
+        model['feature_requirements'] = report['safe_features'] + report['bdj_required_features'] + report['unsupported_features']
+        model['backend_compatibility'] = report
+    else:
+        model.setdefault('feature_requirements', [])
+    return model
+
+
 def generate_show(model, out: Path):
     lines=['# Generated from PowerPoint by tools/pptx_menu_converter.py','show','']
     lines += [
@@ -643,9 +702,15 @@ def main():
     generate_loop_source_videos(model, project_dir, out/'assets')
     assign_video_actions(model)
     draw_overlays(model, out/'assets')
+    add_neutral_menu_metadata(model, out/'assets')
+    # Emit the backend-neutral model before any backend-specific GRIN/BD-J files.
+    (out/'menu-model.json').write_text(json.dumps(model, indent=2)+'\n')
     generate_show(model, out)
     write_build_files(out, model)
     (out/'menu-model.json').write_text(json.dumps(model, indent=2)+'\n')
+    if write_compatibility_report:
+        write_compatibility_report(out, model)
+        (out/'menu-model.json').write_text(json.dumps(model, indent=2)+'\n')
     (out/'video-actions.json').write_text(json.dumps((model.get('video_actions', []) + model.get('loop_actions', [])), indent=2)+'\n')
     (out/'loop-actions.json').write_text(json.dumps(model.get('loop_actions', []), indent=2)+'\n')
     print(f'Generated {out}')

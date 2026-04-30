@@ -116,7 +116,7 @@ A_AC3, "{encoded}", lang=eng
     lines.append('4. Assemble the final BDMV tree and ISO:')
     lines.append('')
     lines.append('```bash')
-    lines.append(f'./scripts/create-final-bluray-iso.sh {str(project)!r}')
+    lines.append(f'./scripts/create-final-bluray-iso.sh {str(project)!r} --menu-backend bdj')
     lines.append('```')
     lines.append('')
     lines.append('## Important caveat')

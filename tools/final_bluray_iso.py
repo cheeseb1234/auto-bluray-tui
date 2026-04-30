@@ -3,12 +3,18 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import subprocess
-import sys
 import zipfile
 from pathlib import Path
+
+from menu_backends import (
+    DEFAULT_MENU_BACKEND,
+    MENU_BACKENDS,
+    MenuBackendError,
+    backend_for,
+    convert_pptx_menu,
+)
 
 
 DISC_CAPACITY_BYTES = {
@@ -221,92 +227,15 @@ def make_iso(mkisofs_cmd: list[Path|str], disc_root: Path, iso_path: Path, volum
         )
 
 
-def build_pptx_menu(root: Path, project: Path) -> Path:
-    """Regenerate and build the PowerPoint-derived GRIN/BD-J menu."""
-    menu_dir = root / 'xlets' / 'grin_samples' / 'Scripts' / 'PptxMenu'
-    run([root / 'scripts' / 'convert-pptx-menu.sh', project])
-    run(['ant', 'default'], cwd=menu_dir)
-    jar_path = menu_dir / 'build' / '00000.jar'
-    bdjo_path = menu_dir / 'build' / '00000.bdjo'
-    if not jar_path.exists() or not bdjo_path.exists():
-        raise SystemExit(f'PptxMenu build did not create expected {jar_path} and {bdjo_path}')
-    return menu_dir
-
-
-def sign_pptx_menu_jar(root: Path, disc_root: Path, output_root: Path):
-    """Sign the generated menu jar so BD-J/libbluray accepts media control."""
-    security_jar = root / 'bin' / 'security.jar'
-    bc_jar = root / 'bin' / 'bcprov-jdk15-137.jar'
-    jar_path = disc_root / 'BDMV' / 'JAR' / '00000.jar'
-    cert_work = output_root / 'cert-work'
-    cert_work.mkdir(parents=True, exist_ok=True)
-    if not security_jar.exists() or not bc_jar.exists():
-        raise SystemExit(f'Missing BD-J signing tools: {security_jar} or {bc_jar}')
-
-    tools_jar_candidates = []
-    java_home = os.environ.get('JAVA_HOME')
-    if java_home:
-        tools_jar_candidates.append(Path(java_home) / 'lib' / 'tools.jar')
-    tools_jar_candidates.extend([
-        Path('/usr/lib/jvm/default/lib/tools.jar'),
-        Path('/usr/lib/jvm/java-8-openjdk/lib/tools.jar'),
-    ])
-    tools_jar = next((p for p in tools_jar_candidates if p.exists()), None)
-    cp_entries = [security_jar]
-    if tools_jar:
-        cp_entries.append(tools_jar)
-    cp_entries.append(bc_jar)
-    cp = os.pathsep.join(str(p) for p in cp_entries)
-    run(['java', '-cp', cp, 'net.java.bd.tools.security.BDCertGenerator', '-debug', '-root', '56789abc'], cwd=cert_work)
-    run(['java', '-cp', cp, 'net.java.bd.tools.security.BDCertGenerator', '-debug', '-app', '56789abc'], cwd=cert_work)
-    run(['java', '-cp', cp, 'net.java.bd.tools.security.BDSigner', '-debug', jar_path], cwd=cert_work)
-    cert = cert_work / 'app.discroot.crt'
-    if cert.exists():
-        for dst in (disc_root / 'CERTIFICATE' / 'app.discroot.crt', disc_root / 'CERTIFICATE' / 'BACKUP' / 'app.discroot.crt'):
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(cert, dst)
-
-
-def add_pptx_menu_assets_to_jar(menu_dir: Path, jar_path: Path):
-    """Package generated slide PNGs beside pptx-menu.grin in the menu jar."""
-    assets_dir = menu_dir / 'assets'
-    if not assets_dir.exists():
-        raise SystemExit(f'Missing generated PptxMenu assets: {assets_dir}')
-    with zipfile.ZipFile(jar_path, 'a', zipfile.ZIP_DEFLATED) as zf:
-        for asset in sorted(assets_dir.rglob('*')):
-            if asset.is_file():
-                zf.write(asset, asset.relative_to(menu_dir).as_posix())
-
-
-def install_pptx_menu_overlay(root: Path, project: Path, disc_root: Path, output_root: Path):
-    menu_dir = build_pptx_menu(root, project)
-    bdmv = disc_root / 'BDMV'
-    jar_dir = bdmv / 'JAR'
-    bdjo_dir = bdmv / 'BDJO'
-    aux_dir = bdmv / 'AUXDATA'
-    cert_dir = disc_root / 'CERTIFICATE'
-
-    shutil.rmtree(jar_dir, ignore_errors=True)
-    shutil.rmtree(bdjo_dir, ignore_errors=True)
-    jar_dir.mkdir(parents=True, exist_ok=True)
-    bdjo_dir.mkdir(parents=True, exist_ok=True)
-    aux_dir.mkdir(parents=True, exist_ok=True)
-    cert_dir.mkdir(parents=True, exist_ok=True)
-    (cert_dir / 'BACKUP').mkdir(parents=True, exist_ok=True)
-
-    shutil.copy2(menu_dir / 'build' / '00000.jar', jar_dir / '00000.jar')
-    add_pptx_menu_assets_to_jar(menu_dir, jar_dir / '00000.jar')
-    shutil.copy2(menu_dir / 'build' / '00000.bdjo', bdjo_dir / '00000.bdjo')
-
-    # The generated BDJO references default font file 00000.  Keep the sample
-    # font if present; otherwise menu rendering still uses slide PNGs, but some
-    # players expect this file to exist.
-    sample_font = root / 'xlets' / 'hdcookbook_discimage' / 'dist' / 'DiscImage' / 'BDMV' / 'AUXDATA' / '00000.otf'
-    if sample_font.exists() and not (aux_dir / '00000.otf').exists():
-        shutil.copy2(sample_font, aux_dir / '00000.otf')
-
-    sign_pptx_menu_jar(root, disc_root, output_root)
-    return menu_dir
+def install_menu_backend(root: Path, project: Path, disc_root: Path, output_root: Path, requested_backend: str):
+    """Convert the PPTX once, select the requested backend, and install it."""
+    menu_dir, model, compatibility, selected_backend = convert_pptx_menu(root, project, requested_backend=requested_backend)
+    backend = backend_for(selected_backend)
+    try:
+        install_report = backend.install(root=root, project=project, menu_dir=menu_dir, disc_root=disc_root, output_root=output_root, model=model)
+    except MenuBackendError as e:
+        raise SystemExit(str(e)) from e
+    return menu_dir, model, compatibility, selected_backend, install_report
 
 
 def refresh_playlist_map(root: Path, project: Path, menu_dir: Path) -> dict:
@@ -381,6 +310,7 @@ def main():
     ap.add_argument('--disc-preset', choices=['quality', 'dvd5', 'dvd9', 'bd25'], default='bd25', help='disc size target for final capacity validation')
     ap.add_argument('--allow-oversized', action='store_true', help='allow outputs above selected disc bitrate/size guardrails')
     ap.add_argument('--no-iso', action='store_true', help='build final BDMV tree only')
+    ap.add_argument('--menu-backend', choices=MENU_BACKENDS, default=DEFAULT_MENU_BACKEND, help='menu authoring backend: hdmv scaffold, bdj/GRIN, or auto-select; default: hdmv')
     args = ap.parse_args()
 
     project = Path(args.project_dir).resolve()
@@ -415,7 +345,7 @@ def main():
     with zipfile.ZipFile(overlay_zip) as zf:
         zf.extractall(disc_root)
 
-    menu_dir = install_pptx_menu_overlay(root, project, disc_root, output_root)
+    menu_dir, menu_model, menu_compatibility, selected_menu_backend, menu_install = install_menu_backend(root, project, disc_root, output_root, args.menu_backend)
     plan = refresh_playlist_map(root, project, menu_dir)
     rows = plan.get('video_playlist_map') or []
     legacy_first_play = disc_root / 'BDMV' / 'PLAYLIST' / '00000.mpls'
@@ -486,6 +416,10 @@ def main():
         'iso': str(iso_path) if not args.no_iso else None,
         'volume_id': volume_id,
         'disc_preset': args.disc_preset,
+        'menu_backend': selected_menu_backend,
+        'requested_menu_backend': args.menu_backend,
+        'menu_compatibility': menu_compatibility,
+        'menu_install': menu_install,
         'titles': summary,
         'total_stream_bytes': sum(x['size'] for x in summary),
     }

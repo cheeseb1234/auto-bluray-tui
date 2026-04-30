@@ -16,6 +16,12 @@ try:
     import pptx_menu_converter
 except Exception:
     pptx_menu_converter = None
+try:
+    from menu_backends import DEFAULT_MENU_BACKEND, MENU_BACKENDS, analyze_menu_compatibility
+except Exception:
+    DEFAULT_MENU_BACKEND = 'hdmv'
+    MENU_BACKENDS = ('hdmv', 'bdj', 'auto')
+    analyze_menu_compatibility = None
 
 ENCODERS = ['auto', 'nvenc', 'cpu']
 RESOLUTIONS = ['1920x1080', '1280x720']
@@ -86,6 +92,7 @@ def default_config():
         'audio_bitrate': '448k',
         'disc_title': '',
         'disc_preset': 'bd25',
+        'menu_backend': DEFAULT_MENU_BACKEND,
         'only': '',
         'smoke_seconds': '',
     }
@@ -242,6 +249,16 @@ def project_diagnostics(project: Path, root: Path, rows=None, meta=None, cfg=Non
             unused = sorted({p.name for p in vids} - {t for t in targets if t})
             if unused and actions:
                 add('warning', 'Some project videos are not reachable from the PPTX menu.', 'Unreferenced: ' + ', '.join(unused[:6]))
+            if analyze_menu_compatibility:
+                compat = analyze_menu_compatibility(model)
+                backend = (cfg or {}).get('menu_backend', DEFAULT_MENU_BACKEND)
+                if backend == 'hdmv':
+                    if compat.get('hdmv_safe'):
+                        add('warning', 'menu_backend=hdmv is selected and this menu looks HDMV-safe, but HDMV-Lite compilation is scaffold-only in this release.', 'Use menu_backend=bdj for a working disc until HDMV-Lite compilation is implemented.')
+                    else:
+                        add('warning', 'menu_backend=hdmv is selected, but this menu requires BD-J features.', 'Use menu_backend=auto/bdj or remove BD-J-only features; see generated menu-compatibility.md after conversion.')
+                elif backend == 'auto' and compat.get('hdmv_safe'):
+                    add('warning', 'menu_backend=auto would choose HDMV for this safe menu, but HDMV-Lite compilation is scaffold-only in this release.', 'Use menu_backend=bdj for a working disc until HDMV-Lite compilation is implemented.')
             for warn in model.get('match_warnings') or []:
                 add('info', warn.get('message', 'Auto-corrected a menu/video filename match.'), 'Review generated video-actions.json if this was unexpected.')
         except Exception as e:
@@ -427,7 +444,8 @@ python3 - "$ROOT" <<'PY'
 import json, sys
 from pathlib import Path
 root = Path(sys.argv[1])
-actions_path = root / 'xlets/grin_samples/Scripts/PptxMenu/video-actions.json'
+menu_dir = root / 'xlets/grin_samples/Scripts/PptxMenu'
+actions_path = menu_dir / 'video-actions.json'
 try:
     actions = json.loads(actions_path.read_text())
 except Exception as e:
@@ -437,6 +455,10 @@ if not button_actions:
     raise SystemExit('No PPTX video buttons matched project videos; fix button text or filenames before encoding/burning')
 loop_actions = [a for a in actions if a.get('kind') == 'loop']
 print(f'Preflight video actions: {{len(button_actions)}} matched button(s); {{len(loop_actions)}} autoplay loop(s)')
+compat_path = menu_dir / 'menu-compatibility.json'
+if compat_path.exists():
+    compat = json.loads(compat_path.read_text())
+    print(f"Menu compatibility: HDMV-safe={{'yes' if compat.get('hdmv_safe') else 'no'}}; BD-J-required={{len(compat.get('bdj_required_features') or [])}}; unsupported={{len(compat.get('unsupported_features') or [])}}")
 PY
 
 if [[ ! -x {shell_quote(ts_muxer)} ]] && ! command -v tsMuxer >/dev/null 2>&1 && ! command -v tsMuxeR >/dev/null 2>&1 && ! command -v tsmuxer >/dev/null 2>&1; then
@@ -462,7 +484,7 @@ CURRENT_STEP=build-sample-disc
 run_step build-sample-disc {shell_quote(scripts / 'build-sample-disc.sh')}
 
 CURRENT_STEP=create-final-bluray-iso
-run_step create-final-bluray-iso {shell_quote(scripts / 'create-final-bluray-iso.sh')} "$PROJECT" --volume-id {shell_quote(disc_title)} --disc-preset {shell_quote(cfg.get('disc_preset', 'bd25'))}
+run_step create-final-bluray-iso {shell_quote(scripts / 'create-final-bluray-iso.sh')} "$PROJECT" --volume-id {shell_quote(disc_title)} --disc-preset {shell_quote(cfg.get('disc_preset', 'bd25'))} --menu-backend {shell_quote(cfg.get('menu_backend', DEFAULT_MENU_BACKEND))}
 
 CURRENT_STEP=auto-burn-final-bluray
 update_state running auto-burn-final-bluray
@@ -1205,7 +1227,7 @@ def draw(stdscr, project: Path, root: Path):
         y += 1
         disc_label = DISC_PRESET_LABELS.get(cfg.get('disc_preset'), cfg.get('disc_preset', 'bd25'))
         opt_attr = color('warn' if cfg.get('disc_preset') == 'quality' else 'ok')
-        safe_add(stdscr, y, 0, f'Title: {cfg.get("disc_title") or project.name} | Options: disc={disc_label} encoder={cfg["encoder"]} resolution={cfg["resolution"]} quality={cfg["quality"]} nvenc_preset={cfg["nvenc_preset"]} audio={cfg["audio_bitrate"]} only={cfg.get("only") or "all"} smoke={cfg.get("smoke_seconds") or "off"}', width - 1, opt_attr)
+        safe_add(stdscr, y, 0, f'Title: {cfg.get("disc_title") or project.name} | Options: disc={disc_label} menu={cfg.get("menu_backend", DEFAULT_MENU_BACKEND)} encoder={cfg["encoder"]} resolution={cfg["resolution"]} quality={cfg["quality"]} nvenc_preset={cfg["nvenc_preset"]} audio={cfg["audio_bitrate"]} only={cfg.get("only") or "all"} smoke={cfg.get("smoke_seconds") or "off"}', width - 1, opt_attr)
         y += 1
         y = draw_diagnostics(stdscr, y, width, meta.get('diagnostics') or [], max_rows=4)
         workflow = meta.get('workflow') or read_workflow_state(project)
@@ -1342,6 +1364,9 @@ def draw(stdscr, project: Path, root: Path):
                 preset_audio = preset_audio_bitrate(cfg['disc_preset'])
                 if preset_audio:
                     cfg['audio_bitrate'] = preset_audio
+                save_config(project, cfg); break
+            if key in (ord('m'), ord('M')):
+                cfg['menu_backend'] = cycle(cfg.get('menu_backend', DEFAULT_MENU_BACKEND), list(MENU_BACKENDS))
                 save_config(project, cfg); break
             if key in (ord('e'), ord('E')):
                 cfg['encoder'] = cycle(cfg['encoder'], ENCODERS)

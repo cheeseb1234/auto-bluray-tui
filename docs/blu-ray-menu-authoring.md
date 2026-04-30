@@ -64,12 +64,57 @@ xlets/grin_samples/Scripts/PptxMenu/
 Important generated files:
 
 ```text
-menu-model.json       parsed slide/button/loop model
-video-actions.json    button + loop playlist actions
-loop-actions.json     loop playlist actions only
-pptx-menu.txt         generated GRIN script
-assets/*.png          slide backgrounds and button state overlays
+menu-model.json          backend-neutral model: slides, backgrounds, buttons, hitboxes,
+                         focus order, actions, playlists, video targets, requirements
+menu-compatibility.json  machine-readable HDMV-vs-BD-J compatibility report
+menu-compatibility.md    human-readable compatibility report
+video-actions.json       button + loop playlist actions
+loop-actions.json        loop playlist actions only
+pptx-menu.txt            generated GRIN script for the BD-J backend
+assets/*.png             slide backgrounds and button state overlays
 ```
+
+## Menu backends: HDMV, BD-J, and auto
+
+Auto Blu-ray TUI now separates PowerPoint parsing from Blu-ray menu authoring. The converter first emits a backend-neutral `menu-model.json`, then a backend selector chooses how to author that model.
+
+Backend values:
+
+- `hdmv` — default. Validates that the model uses only the current HDMV-Lite-safe feature subset, then fails clearly because actual HDMV compilation is not implemented yet.
+- `bdj` — current production path. Builds the generated GRIN script and installs/signs the BD-J Xlet/JAR/BDJO artifacts.
+- `auto` — chooses `hdmv` when the compatibility report is HDMV-safe; otherwise falls back to `bdj` when BD-J-only features are detected.
+
+Use BD-J for working discs today:
+
+```bash
+./scripts/create-final-bluray-iso.sh "/path/to/project" --menu-backend bdj
+```
+
+The TUI persists the same setting in `build/bluray-media/encode-options.json`; press `m` to cycle `hdmv` / `bdj` / `auto`.
+
+### Current HDMV-Lite status
+
+This first pass is architecture and validation scaffolding, not full HDMV authoring. The HDMV backend currently writes compatibility reports and refuses to produce incomplete HDMV artifacts. Planned HDMV-Lite milestones are documented in `docs/HDMV/HDMV plan.md`.
+
+HDMV-safe in the current model:
+
+- static slide backgrounds
+- rectangular button hitboxes
+- geometry-derived focus order / neighbor navigation
+- simple play-title actions mapped to playlists
+- simple go-to-menu/page actions
+
+BD-J-required in the current implementation:
+
+- looping/motion/windowed menu video
+- Java media control behavior such as current loop playback and return-to-menu implementation
+- button graphics layered over transparent video windows
+- any custom action not representable as play-title or go-to-menu
+
+### Tradeoffs
+
+- **HDMV** should eventually be more compatible with standalone players because it avoids Java startup, BD-J signing, and player-specific Java behavior. The tradeoff is that the open-source implementation is still incomplete and must stay within a conservative static-menu subset first.
+- **BD-J/GRIN** is the proven path in this project today and supports the existing PowerPoint workflow, motion/menu-loop behavior, Java playback control, and return-to-menu behavior. The tradeoff is higher complexity and more variation across players.
 
 Validate the generated GRIN/BD-J menu:
 
@@ -219,7 +264,7 @@ The authoring plan deduplicates repeated playlist IDs, so the same movie button 
 Build final ISO manually:
 
 ```bash
-./scripts/create-final-bluray-iso.sh "/path/to/project" --volume-id "MY_DISC" --disc-preset bd25
+./scripts/create-final-bluray-iso.sh "/path/to/project" --volume-id "MY_DISC" --disc-preset bd25 --menu-backend bdj
 ```
 
 Outputs:
