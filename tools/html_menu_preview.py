@@ -125,6 +125,7 @@ def make_preview(model_path: Path, output: Path, project_dir: Path | None) -> No
         'baseNote': f'Preview generated from {model_path}',
     }
     json_payload = json.dumps(payload, ensure_ascii=False)
+    safe_json_payload = json_payload.replace('</', '<\\/')
     title = html.escape(f"Blu-ray menu preview - {Path(model.get('source', 'menu.pptx')).name}")
 
     html_doc = f"""<!doctype html>
@@ -179,7 +180,7 @@ def make_preview(model_path: Path, output: Path, project_dir: Path | None) -> No
   </section>
 </main>
 <footer id=\"status\"></footer>
-<script id=\"preview-data\" type=\"application/json\">{json_payload.replace('</', '<\\/')}</script>
+<script id=\"preview-data\" type=\"application/json\">{safe_json_payload}</script>
 <script>
 const data = JSON.parse(document.getElementById('preview-data').textContent);
 const model = data.model;
