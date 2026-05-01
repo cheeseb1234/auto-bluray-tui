@@ -1497,20 +1497,21 @@ def draw(stdscr, project: Path, root: Path):
             time.sleep(0.1)
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description='Curses monitor for Blu-ray media preparation progress.')
     parser.add_argument('project_dir', nargs='?', default='/home/corey/.openclaw/Bluray project')
     parser.add_argument('--once', action='store_true', help='print a noninteractive status snapshot')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     project = Path(args.project_dir).resolve()
     root = Path(__file__).resolve().parents[1]
 
     if args.once:
         rows, meta = collect(project, root)
         print(json.dumps({'project': str(project), 'meta': meta, 'videos': rows}, default=str, indent=2))
-        return
+        return 0
 
     curses.wrapper(draw, project, root)
+    return 0
 
 
 if __name__ == '__main__':

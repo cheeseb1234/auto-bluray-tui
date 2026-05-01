@@ -49,24 +49,6 @@ jobs:
           if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
         shell: bash
 
-      - name: Ensure release readme exists
-        run: |
-          if [ ! -f README_RELEASE.md ]; then
-            cat > README_RELEASE.md <<'EOF'
-          # Auto Blu-ray TUI Release
-
-          This archive contains a platform-specific Auto Blu-ray TUI launcher,
-          the cross-platform dependency installer (`install.py`), and bundled
-          project support files needed by the launcher.
-
-          ## Quick start
-
-          1. Run `python install.py` to install system dependencies and create `.venv`.
-          2. Run the bundled `auto-bluray-tui` executable with your project path.
-          EOF
-          fi
-        shell: bash
-
       - name: Build standalone executable with PyInstaller
         run: >-
           pyinstaller
@@ -74,8 +56,21 @@ jobs:
           --clean
           --onedir
           --name auto-bluray-tui
+          --paths tools
+          --hidden-import bluray_tui_monitor
           --add-data "lib${{ matrix.data-separator }}lib"
           --add-data "tools${{ matrix.data-separator }}tools"
+          --add-data "scripts${{ matrix.data-separator }}scripts"
+          --add-data "xlets${{ matrix.data-separator }}xlets"
+          --add-data "bin${{ matrix.data-separator }}bin"
+          --add-data "DiscCreationTools${{ matrix.data-separator }}DiscCreationTools"
+          --add-data "docs${{ matrix.data-separator }}docs"
+          --add-data "README.md${{ matrix.data-separator }}."
+          --add-data "README_RELEASE.md${{ matrix.data-separator }}."
+          --add-data "requirements.txt${{ matrix.data-separator }}."
+          --add-data "LICENSE${{ matrix.data-separator }}."
+          --add-data "vars.properties${{ matrix.data-separator }}."
+          --add-data "user.vars.properties.example${{ matrix.data-separator }}."
           start.py
         shell: bash
 
@@ -85,6 +80,11 @@ jobs:
           if [ -f dist/auto-bluray-tui/auto-bluray-tui.exe ]; then
             mv dist/auto-bluray-tui/auto-bluray-tui.exe dist/auto-bluray-tui/${{ matrix.executable }}
           fi
+        shell: bash
+
+      - name: Smoke test built executable
+        run: |
+          dist/auto-bluray-tui/${{ matrix.executable }} --help
         shell: bash
 
       - name: Stage release archive
@@ -106,19 +106,28 @@ jobs:
           if not dist_dir.exists():
               raise SystemExit(f"Missing PyInstaller output: {dist_dir}")
 
-          # Keep the whole onedir bundle so PyInstaller's runtime files and the
-          # bundled lib/tools data directories stay beside the executable.
+          # Keep the whole onedir bundle so PyInstaller's runtime files and all
+          # workflow support assets stay beside the executable under app/.
           shutil.copytree(dist_dir, stage / "app")
 
-          for filename in ("install.py", "README_RELEASE.md"):
+          # Also keep the top-level installer/readme/license files easy to find.
+          for filename in ("install.py", "README_RELEASE.md", "README.md", "requirements.txt", "LICENSE"):
               source = Path(filename)
               if not source.exists():
                   raise SystemExit(f"Missing required release file: {filename}")
               shutil.copy2(source, stage / filename)
 
-          exe_path = stage / "app" / executable
-          if not exe_path.exists():
-              raise SystemExit(f"Missing expected executable: {exe_path}")
+          required = [
+              stage / "app" / executable,
+              stage / "app" / "_internal" / "tools" / "bluray_tui_monitor.py",
+              stage / "app" / "_internal" / "scripts" / "create-final-bluray-iso.sh",
+              stage / "app" / "_internal" / "xlets" / "hdcookbook_discimage" / "build.xml",
+              stage / "app" / "_internal" / "bin" / "grincompiler.jar",
+              stage / "app" / "_internal" / "DiscCreationTools" / "index" / "index.xsd",
+          ]
+          missing = [str(path) for path in required if not path.exists()]
+          if missing:
+              raise SystemExit("Missing expected runtime asset(s):\n" + "\n".join(missing))
 
           archive_path = Path(archive_name)
           if archive_path.exists():

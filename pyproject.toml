@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "auto-bluray-tui"
+version = "1.5.0"
+description = "PowerPoint-to-Blu-ray autopilot for encoding, menu authoring, ISO creation, and disc burning."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Auto Blu-ray TUI contributors" }
+]
+dependencies = [
+  "Pillow>=10.0",
+  "requests>=2.31",
+  "windows-curses>=2.3; platform_system == 'Windows'",
+]
+keywords = ["blu-ray", "bd-j", "authoring", "tui", "ffmpeg"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console :: Curses",
+  "Intended Audience :: End Users/Desktop",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Multimedia :: Video",
+]
+
+[project.urls]
+Homepage = "https://github.com/cheeseb1234/auto-bluray-tui"
+Repository = "https://github.com/cheeseb1234/auto-bluray-tui"
+Issues = "https://github.com/cheeseb1234/auto-bluray-tui/issues"
+
+[project.scripts]
+auto-bluray-tui = "start:main"
+
+[tool.setuptools]
+py-modules = ["start", "install"]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tools*"]

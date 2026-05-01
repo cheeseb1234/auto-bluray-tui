@@ -12,9 +12,10 @@ import os
 import platform
 import shutil
 import subprocess
+import importlib
 import sys
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Sequence
 
 
 APP_NAME = "Auto Blu-ray TUI"
@@ -28,6 +29,11 @@ class LauncherError(RuntimeError):
 
 
 def project_root() -> Path:
+    # In a PyInstaller onedir build, runtime data files live under sys._MEIPASS
+    # (typically app/_internal). In a source checkout, they live beside start.py.
+    frozen_root = getattr(sys, "_MEIPASS", None)
+    if frozen_root:
+        return Path(frozen_root).resolve()
     return Path(__file__).resolve().parent
 
 
@@ -195,8 +201,27 @@ def preflight(project_dir: Path, *, skip_dependency_check: bool, quiet: bool) ->
                 print(f"{tool}: {version} (some media analysis features may fail)")
 
 
-def build_tui_command(project_dir: Path, extra_args: Iterable[str]) -> list[str]:
-    return [sys.executable, str(tui_script()), str(project_dir), *list(extra_args)]
+def ensure_tools_import_path() -> None:
+    tools = str(tools_dir())
+    if tools not in sys.path:
+        sys.path.insert(0, tools)
+
+    env_pythonpath = os.environ.get("PYTHONPATH")
+    paths = env_pythonpath.split(os.pathsep) if env_pythonpath else []
+    if tools not in paths:
+        os.environ["PYTHONPATH"] = tools + (os.pathsep + env_pythonpath if env_pythonpath else "")
+
+
+def _import_tui_monitor():
+    ensure_tools_import_path()
+    return importlib.import_module("bluray_tui_monitor")
+
+
+def run_tui(project_dir: Path, extra_args: Sequence[str]) -> int:
+    """Run the curses TUI in-process so PyInstaller launchers keep working."""
+    monitor = _import_tui_monitor()
+    result = monitor.main([str(project_dir), *list(extra_args)])
+    return 0 if result is None else int(result)
 
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
@@ -235,13 +260,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         preflight(project_dir, skip_dependency_check=args.skip_dependency_check, quiet=args.quiet)
-        cmd = build_tui_command(project_dir, tui_args)
-        env_pythonpath = os.environ.get("PYTHONPATH")
-        if env_pythonpath:
-            os.environ["PYTHONPATH"] = str(tools_dir()) + os.pathsep + env_pythonpath
-        else:
-            os.environ["PYTHONPATH"] = str(tools_dir())
-        return stream_command(cmd, cwd=project_root())
+        return run_tui(project_dir, tui_args)
     except KeyboardInterrupt:
         print("\nInterrupted.", file=sys.stderr)
         return 130
