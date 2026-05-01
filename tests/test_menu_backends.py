@@ -12,6 +12,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 
 from menu_backends import (
     BdjMenuBackend,
+    DEFAULT_MENU_BACKEND,
+    HDMV_COMPILER_STATUS,
     HdmvMenuBackend,
     MenuBackendError,
     analyze_menu_compatibility,
@@ -94,11 +96,23 @@ def write_background_assets(menu_dir: Path, model: dict):
 
 
 class MenuBackendCompatibilityTests(unittest.TestCase):
-    def test_hdmv_safe_menu_is_accepted_by_selector(self):
+    def test_default_backend_is_bdj(self):
+        self.assertEqual(DEFAULT_MENU_BACKEND, 'bdj')
+
+    def test_hdmv_safe_menu_does_not_auto_select_hdmv_until_compiler_is_functional(self):
         report = analyze_menu_compatibility(safe_model())
         self.assertTrue(report['hdmv_safe'])
-        self.assertEqual(select_backend('auto', report), 'hdmv')
+        self.assertEqual(report['hdmv_compiler_status'], HDMV_COMPILER_STATUS)
+        self.assertFalse(report['hdmv_compiler_functional'])
+        self.assertEqual(select_backend('auto', report), 'bdj')
         self.assertEqual(select_backend('bdj', report), 'bdj')
+        self.assertEqual(select_backend('hdmv', report), 'hdmv')
+
+    def test_auto_can_select_hdmv_after_compiler_status_is_functional(self):
+        report = analyze_menu_compatibility(safe_model())
+        report['hdmv_compiler_status'] = 'functional'
+        report['hdmv_compiler_functional'] = True
+        self.assertEqual(select_backend('auto', report), 'hdmv')
 
     def test_bdj_only_feature_forces_auto_to_bdj(self):
         report = analyze_menu_compatibility(bdj_only_model())
@@ -106,12 +120,44 @@ class MenuBackendCompatibilityTests(unittest.TestCase):
         self.assertEqual(select_backend('auto', report), 'bdj')
         self.assertTrue(any(row['feature'] == 'motion_or_windowed_menu_video' for row in report['bdj_required_features']))
 
+    def test_hdmv_report_reflects_parsed_action_types(self):
+        model = safe_model()
+        model['slides'][0]['buttons'].extend([
+            {
+                'id': 'Timed',
+                'label': 'Big Reveal',
+                'focus_index': 3,
+                'hitbox_px': {'x': 100, 'y': 200, 'w': 200, 'h': 60},
+                'action': {'kind': 'video', 'target': 'Movie.mkv', 'video_file': 'Movie.mkv', 'start_time_seconds': 60, 'start_time': '00:01:00'},
+            },
+            {
+                'id': 'Disabled',
+                'label': 'Coming Soon',
+                'focus_index': 4,
+                'hitbox_px': {'x': 100, 'y': 300, 'w': 200, 'h': 60},
+                'action': {'kind': 'builtin', 'name': 'disabled', 'type': 'disabled'},
+            },
+            {
+                'id': 'Resume',
+                'label': 'Resume',
+                'focus_index': 5,
+                'hitbox_px': {'x': 100, 'y': 400, 'w': 200, 'h': 60},
+                'action': {'kind': 'builtin', 'name': 'resume', 'type': 'resume'},
+            },
+        ])
+        report = analyze_menu_compatibility(model)
+        self.assertFalse(report['hdmv_safe'])
+        self.assertTrue(any(row['feature'] == 'timed_or_chapter_video_actions' for row in report['bdj_required_features']))
+        self.assertTrue(any(row['feature'] == 'bdj_runtime_builtin_actions' for row in report['bdj_required_features']))
+        self.assertTrue(any(row['feature'] == 'safe_builtin_actions' for row in report['safe_features']))
+
     def test_compatibility_report_files_are_written(self):
         with tempfile.TemporaryDirectory() as tmp:
             menu_dir = Path(tmp)
             report = write_compatibility_report(menu_dir, bdj_only_model(), requested_backend='auto', selected_backend='bdj')
             self.assertFalse(report['hdmv_safe'])
             self.assertIn('motion_or_windowed_menu_video', (menu_dir / 'menu-compatibility.md').read_text())
+            self.assertIn('HDMV-Lite compiler status: `ir_only_first_milestone`', (menu_dir / 'menu-compatibility.md').read_text())
             self.assertTrue((menu_dir / 'menu-compatibility.json').exists())
 
     def test_hdmv_lite_model_contains_hitboxes_and_simple_actions(self):

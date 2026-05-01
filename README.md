@@ -31,6 +31,7 @@ Blu-ray authoring normally involves a fragile chain of tools and formats. This p
 Benefits:
 
 - **PowerPoint-first menus** — build menu screens in a familiar editor instead of hand-authoring every layout. Shapes whose text matches a video, such as `Background 1`, can become autoplaying looped video regions on that slide.
+- **Readable button labels** — use `Button Text | Action` to keep pretty PowerPoint labels while targeting videos, timestamps, chapters, slide jumps, or built-in menu actions.
 - **One-command workflow** — launch the TUI and let autopilot work through the steps.
 - **GPU acceleration** — uses RTX/NVENC automatically when available.
 - **Disc-size guardrails** — targets DVD-5, DVD-9, or BD-25 and rejects oversized encodes/ISOs instead of silently creating output that will not fit.
@@ -53,7 +54,42 @@ In the TUI:
 
 - **Actions:** `w` full autopilot, `Enter` encode media only, `b` burn the final ISO, `k` stop running work, `q` quit
 - **View/device:** `r` refresh/re-analyze if needed, `v` cycle detected optical burners
-- **Options:** `d` disc size (`DVD-5` → `DVD-9` → `BD-25` → quality/no cap), `e` encoder, `z` resolution, `l` quality, `p` NVENC preset, `a` audio bitrate, `o` encode only one video, `s` smoke-test length
+- **Options:** `d` disc size (`DVD-5` → `DVD-9` → `BD-25` → quality/no cap), `m` menu backend, `e` encoder, `z` resolution, `l` quality, `p` NVENC preset, `a` audio bitrate, `o` encode only one video, `s` smoke-test length
+
+## Menu backend status
+
+- **BD-J / GRIN is the current working menu backend and default.** Use it for finished discs today.
+- **HDMV-Lite is experimental.** It exports/scaffolds Java-free menu metadata and HDMV authoring artifacts, but it does not yet compile functional Interactive Graphics streams or final HDMV menu commands.
+- **Auto currently stays on BD-J.** It must not select HDMV as the final backend until the HDMV `compiler_status` is functional.
+
+## PowerPoint button action grammar
+
+PowerPoint button text can be a simple action, or it can use the preferred display/action form:
+
+```text
+Button Text | Action
+```
+
+The pipe syntax lets the visible menu text differ from messy filenames. Examples:
+
+```text
+Main Feature
+Play Movie | Main Feature
+Start at Big Reveal | Main Feature@1:00:30
+Watch the Finale | Main Feature#Finale
+Chapter 4 | Main Feature#4
+Bonus Features | goto:Extras
+Bonus Features | menu:Extras
+Bonus Features | slide:Extras
+Trailer | file:Trailer Final Export.mov
+Return Home | main
+Go Back | back
+Watch Everything | play all
+Coming Soon | disabled
+Placeholder | none
+```
+
+Supported Grammar v1 actions are video names, `VideoName@timestamp`, `VideoName#Chapter`, `goto:`/`menu:`/`slide:` navigation, `file:Exact Filename.ext`, and built-ins: `main`, `back`, `top menu`, `resume`, `replay`, `play all`, `disabled`, and `none`. Advanced creative commands such as slideshow, idle/attract mode, pre-roll, compare cuts, aliases, or project.json routing are future work.
 
 ## Project folder expectations
 

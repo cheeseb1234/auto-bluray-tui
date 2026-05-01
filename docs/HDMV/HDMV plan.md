@@ -6,7 +6,7 @@ v0.4	DONE: Add HDMV-Lite export package: copied static backgrounds, button maps,
 v0.5	IN PROGRESS: Replace placeholder MovieObject commands and add real IG stream compilation for HDMV-Lite static menu playback.
 v0.6	Add scene/chapter menus in HDMV-Lite.
 v0.7	Add subtitle/audio setup menus.
-v1.0	Default to HDMV for simple discs, BD-J for advanced/motion/interactive discs.
+v1.0	Consider defaulting to HDMV for simple discs only after HDMV compiler_status is functional; BD-J/GRIN remains the working default until then.
 step zero	gpt research HDMV
 step 0.5	openclaw hdmv.md
 first prompt
@@ -14,7 +14,7 @@ Add a menu backend architecture so Auto Blu-ray TUI can support both HDMV and BD
 
 Current behavior is BD-J/GRIN-based. Refactor the PowerPoint menu conversion so it first emits a backend-neutral menu model JSON containing slides, backgrounds, buttons, hitboxes, focus order, actions, video targets, playlists, and feature requirements.
 
-Then add a backend selector with values: hdmv, bdj, auto. Default should be hdmv. Auto should choose HDMV when the menu uses only HDMV-safe features, and fall back to BD-J when BD-J-only features are detected.
+Then add a backend selector with values: hdmv, bdj, auto. Current default should remain bdj because BD-J/GRIN is the working backend. Auto should not choose HDMV as the final backend until HDMV compiler_status is functional; before that, HDMV stays available as an experimental export/scaffold path.
 
 Do not attempt full HDMV support in the first pass. Implement an HDMV-Lite roadmap and scaffolding:
 1. Create MenuBackend interface.

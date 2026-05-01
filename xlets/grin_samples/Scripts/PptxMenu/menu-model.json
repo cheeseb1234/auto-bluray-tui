@@ -1,216 +1,198 @@
 {
-  "source": "/home/corey/.openclaw/Bluray project/menu.pptx",
+  "source": "/tmp/bluray-project-preview.nBnfrt/menu.pptx",
   "slides": [
     {
       "id": "slide1",
-      "title": "Title of the Film",
+      "title": "Main Menu",
       "texts": [
-        "Extras",
-        "Main Feature",
-        "Title of the Film"
+        "Main Menu",
+        "a, b"
       ],
       "buttons": [
         {
-          "id": "Extras",
-          "label": "Extras",
+          "id": "a_b",
+          "label": "a, b",
           "rect_emu": {
-            "x": 914400,
-            "y": 4572000,
-            "w": 2514600,
+            "x": 3679428,
+            "y": 1927987,
+            "w": 2721768,
             "h": 685800
           },
           "action": {
             "kind": "slide",
-            "target": "slide2"
+            "target": "slide2",
+            "type": "go_to_menu",
+            "menu_target": "slide2"
           },
           "rect_px": {
-            "x": 174,
-            "y": 871,
-            "w": 479,
+            "x": 701,
+            "y": 367,
+            "w": 518,
             "h": 131
-          }
-        },
-        {
-          "id": "Main_Feature",
-          "label": "Main Feature",
-          "rect_emu": {
-            "x": 6858000,
-            "y": 4572000,
-            "w": 2514600,
+          },
+          "hitbox_emu": {
+            "x": 3679428,
+            "y": 1927987,
+            "w": 2721768,
             "h": 685800
           },
-          "action": {
-            "kind": "slide",
-            "target": "slide3"
-          },
-          "rect_px": {
-            "x": 1306,
-            "y": 871,
-            "w": 479,
+          "hitbox_px": {
+            "x": 701,
+            "y": 367,
+            "w": 518,
             "h": 131
-          }
+          },
+          "focus_index": 1
         }
+      ],
+      "loop_videos": [],
+      "background": {
+        "file": "assets/slide1_bg.png",
+        "width": 1920,
+        "height": 1080,
+        "kind": "static_image"
+      },
+      "focus_order": [
+        "a_b"
       ]
     },
     {
       "id": "slide2",
-      "title": "Extras",
+      "title": "Videos 1",
       "texts": [
-        "Video 1",
-        "Video 2",
-        "Main Menu",
-        "Extras"
+        "Videos 1",
+        "a",
+        "b",
+        "Main Menu"
       ],
       "buttons": [
         {
-          "id": "Video_1",
-          "label": "Video 1",
+          "id": "a",
+          "label": "a",
           "rect_emu": {
-            "x": 915120,
-            "y": 4572360,
-            "w": 2514600,
+            "x": 2108544,
+            "y": 1927987,
+            "w": 2721768,
             "h": 685800
           },
           "action": {
             "kind": "video",
-            "target": "Video 1.mkv",
-            "video_file": "Video 1.mkv",
+            "target": "a.mp4",
+            "video_file": "a.mp4",
             "playlist_id": "00001",
             "title_number": 1,
-            "encoded_m2ts": "build/bluray-media/encoded/Video 1.m2ts"
+            "encoded_m2ts": "build/bluray-media/encoded/a.m2ts",
+            "type": "play_title",
+            "video_target": "a.mp4",
+            "playlist": "00001"
           },
           "rect_px": {
-            "x": 174,
-            "y": 871,
-            "w": 479,
+            "x": 402,
+            "y": 367,
+            "w": 518,
             "h": 131
-          }
+          },
+          "hitbox_emu": {
+            "x": 2108544,
+            "y": 1927987,
+            "w": 2721768,
+            "h": 685800
+          },
+          "hitbox_px": {
+            "x": 402,
+            "y": 367,
+            "w": 518,
+            "h": 131
+          },
+          "focus_index": 1
         },
         {
-          "id": "Video_2",
-          "label": "Video 2",
+          "id": "b",
+          "label": "b",
           "rect_emu": {
-            "x": 6858720,
-            "y": 4572360,
-            "w": 2514600,
+            "x": 5250312,
+            "y": 1927987,
+            "w": 2721768,
             "h": 685800
           },
           "action": {
             "kind": "video",
-            "target": "Video 2.mp4",
-            "video_file": "Video 2.mp4",
+            "target": "b.mp4",
+            "video_file": "b.mp4",
             "playlist_id": "00002",
             "title_number": 2,
-            "encoded_m2ts": "build/bluray-media/encoded/Video 2.m2ts"
+            "encoded_m2ts": "build/bluray-media/encoded/b.m2ts",
+            "type": "play_title",
+            "video_target": "b.mp4",
+            "playlist": "00002"
           },
           "rect_px": {
-            "x": 1306,
-            "y": 871,
-            "w": 479,
+            "x": 1000,
+            "y": 367,
+            "w": 518,
             "h": 131
-          }
+          },
+          "hitbox_emu": {
+            "x": 5250312,
+            "y": 1927987,
+            "w": 2721768,
+            "h": 685800
+          },
+          "hitbox_px": {
+            "x": 1000,
+            "y": 367,
+            "w": 518,
+            "h": 131
+          },
+          "focus_index": 2
         },
         {
           "id": "Main_Menu",
           "label": "Main Menu",
           "rect_emu": {
-            "x": 3886560,
-            "y": 4572000,
-            "w": 2514600,
+            "x": 3679428,
+            "y": 4536440,
+            "w": 2721768,
             "h": 685800
           },
           "action": {
             "kind": "slide",
-            "target": "slide1"
+            "target": "slide1",
+            "type": "go_to_menu",
+            "menu_target": "slide1"
           },
           "rect_px": {
-            "x": 740,
-            "y": 871,
-            "w": 479,
+            "x": 701,
+            "y": 864,
+            "w": 518,
             "h": 131
-          }
+          },
+          "hitbox_emu": {
+            "x": 3679428,
+            "y": 4536440,
+            "w": 2721768,
+            "h": 685800
+          },
+          "hitbox_px": {
+            "x": 701,
+            "y": 864,
+            "w": 518,
+            "h": 131
+          },
+          "focus_index": 3
         }
-      ]
-    },
-    {
-      "id": "slide3",
-      "title": "Main Feature",
-      "texts": [
-        "Video 3",
-        "Video 4",
-        "Main Menu",
-        "Main Feature",
-        "This film is about a pug. The pug is magical. There are many clips of the pug. Because we love him. He IS magic. Respect his power. Love you pug wizard!"
       ],
-      "buttons": [
-        {
-          "id": "Video_3",
-          "label": "Video 3",
-          "rect_emu": {
-            "x": 6400800,
-            "y": 1143000,
-            "w": 2514600,
-            "h": 685800
-          },
-          "action": {
-            "kind": "video",
-            "target": "Video 3.mkv",
-            "video_file": "Video 3.mkv",
-            "playlist_id": "00003",
-            "title_number": 3,
-            "encoded_m2ts": "build/bluray-media/encoded/Video 3.m2ts"
-          },
-          "rect_px": {
-            "x": 1219,
-            "y": 218,
-            "w": 479,
-            "h": 131
-          }
-        },
-        {
-          "id": "Video_4",
-          "label": "Video 4",
-          "rect_emu": {
-            "x": 6400800,
-            "y": 3429000,
-            "w": 2514600,
-            "h": 685800
-          },
-          "action": {
-            "kind": "video",
-            "target": "Video 4.mp4",
-            "video_file": "Video 4.mp4",
-            "playlist_id": "00004",
-            "title_number": 4,
-            "encoded_m2ts": "build/bluray-media/encoded/Video 4.m2ts"
-          },
-          "rect_px": {
-            "x": 1219,
-            "y": 653,
-            "w": 479,
-            "h": 131
-          }
-        },
-        {
-          "id": "Main_Menu",
-          "label": "Main Menu",
-          "rect_emu": {
-            "x": 3886200,
-            "y": 4572000,
-            "w": 2514600,
-            "h": 685800
-          },
-          "action": {
-            "kind": "slide",
-            "target": "slide1"
-          },
-          "rect_px": {
-            "x": 740,
-            "y": 871,
-            "w": 479,
-            "h": 131
-          }
-        }
+      "loop_videos": [],
+      "background": {
+        "file": "assets/slide2_bg.png",
+        "width": 1920,
+        "height": 1080,
+        "kind": "static_image"
+      },
+      "focus_order": [
+        "a",
+        "b",
+        "Main_Menu"
       ]
     }
   ],
@@ -219,50 +201,144 @@
     5670550
   ],
   "videos": {
-    "video 3": "Video 3.mkv",
-    "video 1": "Video 1.mkv",
-    "video 4": "Video 4.mp4",
-    "video 2": "Video 2.mp4"
+    "b.mp4": "b.mp4",
+    "b": "b.mp4",
+    "b mp4": "b.mp4",
+    "a.mp4": "a.mp4",
+    "a": "a.mp4",
+    "a mp4": "a.mp4"
   },
-  "subtitles": [
-    "Video 4.srt",
-    "Video 3.srt",
-    "Video 2.srt",
-    "Video 1.srt",
-    "Video 4 Spanish.srt"
-  ],
+  "subtitles": [],
+  "match_warnings": [],
   "video_actions": [
     {
       "slide": "slide2",
-      "button": "Video 1",
-      "video_file": "Video 1.mkv",
+      "button": "a",
+      "kind": "button",
+      "start_time_seconds": 0,
+      "start_timecode": "00:00:00",
+      "video_file": "a.mp4",
       "playlist_id": "00001",
       "title_number": 1,
-      "encoded_m2ts": "build/bluray-media/encoded/Video 1.m2ts"
+      "encoded_m2ts": "build/bluray-media/encoded/a.m2ts"
     },
     {
       "slide": "slide2",
-      "button": "Video 2",
-      "video_file": "Video 2.mp4",
+      "button": "b",
+      "kind": "button",
+      "start_time_seconds": 0,
+      "start_timecode": "00:00:00",
+      "video_file": "b.mp4",
       "playlist_id": "00002",
       "title_number": 2,
-      "encoded_m2ts": "build/bluray-media/encoded/Video 2.m2ts"
-    },
-    {
-      "slide": "slide3",
-      "button": "Video 3",
-      "video_file": "Video 3.mkv",
-      "playlist_id": "00003",
-      "title_number": 3,
-      "encoded_m2ts": "build/bluray-media/encoded/Video 3.m2ts"
-    },
-    {
-      "slide": "slide3",
-      "button": "Video 4",
-      "video_file": "Video 4.mp4",
-      "playlist_id": "00004",
-      "title_number": 4,
-      "encoded_m2ts": "build/bluray-media/encoded/Video 4.m2ts"
+      "encoded_m2ts": "build/bluray-media/encoded/b.m2ts"
     }
-  ]
+  ],
+  "loop_actions": [],
+  "schema_version": "auto-bluray-menu-model-v1",
+  "model_kind": "backend_neutral_menu",
+  "coordinate_spaces": {
+    "source_emu": {
+      "width": 10080625,
+      "height": 5670550
+    },
+    "rendered_px": {
+      "width": 1920,
+      "height": 1080
+    }
+  },
+  "playlists": [
+    {
+      "playlist_id": "00001",
+      "title_number": 1,
+      "video_file": "a.mp4",
+      "encoded_m2ts": "build/bluray-media/encoded/a.m2ts",
+      "kind": "title"
+    },
+    {
+      "playlist_id": "00002",
+      "title_number": 2,
+      "video_file": "b.mp4",
+      "encoded_m2ts": "build/bluray-media/encoded/b.m2ts",
+      "kind": "title"
+    }
+  ],
+  "feature_requirements": [
+    {
+      "feature": "static_slide_backgrounds",
+      "status": "hdmv_safe",
+      "detail": "2 rendered static slide background(s).",
+      "hdmv_lite_phase": "v0.5"
+    },
+    {
+      "feature": "button_hitboxes",
+      "status": "hdmv_safe",
+      "detail": "4 rectangular button hitbox(es).",
+      "hdmv_lite_phase": "v0.5"
+    },
+    {
+      "feature": "focus_order",
+      "status": "hdmv_safe",
+      "detail": "Focus order is derived from button geometry and can map to HDMV neighbor navigation.",
+      "hdmv_lite_phase": "v0.5"
+    },
+    {
+      "feature": "play_title_actions",
+      "status": "hdmv_safe",
+      "detail": "2 play-title action(s) targeting Blu-ray playlist ids.",
+      "hdmv_lite_phase": "v0.5"
+    },
+    {
+      "feature": "menu_page_navigation",
+      "status": "hdmv_safe",
+      "detail": "2 go-to-menu/page action(s).",
+      "hdmv_lite_phase": "v0.5"
+    }
+  ],
+  "backend_compatibility": {
+    "schema_version": "1.0",
+    "requested_backend_default": "hdmv",
+    "hdmv_safe": true,
+    "safe_features": [
+      {
+        "feature": "static_slide_backgrounds",
+        "status": "hdmv_safe",
+        "detail": "2 rendered static slide background(s).",
+        "hdmv_lite_phase": "v0.5"
+      },
+      {
+        "feature": "button_hitboxes",
+        "status": "hdmv_safe",
+        "detail": "4 rectangular button hitbox(es).",
+        "hdmv_lite_phase": "v0.5"
+      },
+      {
+        "feature": "focus_order",
+        "status": "hdmv_safe",
+        "detail": "Focus order is derived from button geometry and can map to HDMV neighbor navigation.",
+        "hdmv_lite_phase": "v0.5"
+      },
+      {
+        "feature": "play_title_actions",
+        "status": "hdmv_safe",
+        "detail": "2 play-title action(s) targeting Blu-ray playlist ids.",
+        "hdmv_lite_phase": "v0.5"
+      },
+      {
+        "feature": "menu_page_navigation",
+        "status": "hdmv_safe",
+        "detail": "2 go-to-menu/page action(s).",
+        "hdmv_lite_phase": "v0.5"
+      }
+    ],
+    "bdj_required_features": [],
+    "unsupported_features": [],
+    "summary": {
+      "slides": 2,
+      "buttons": 4,
+      "video_actions": 2,
+      "slide_actions": 2,
+      "loop_videos": 0
+    }
+  }
 }

@@ -35,7 +35,7 @@ A PowerPoint text box/button becomes a video button when its visible text matche
 | `Feature Film` | `Feature Film.mkv` | Exact stem match |
 | `Just Friends` | `Just.Friends.2005.720p.mp4` | Safe partial/fuzzy match |
 | `Bonus Feature` | `Bonus Feature.mp4` | Exact stem match |
-| `Play Movie` | `Feature Film.mkv` | Does not match unless the file is renamed or the button text changes |
+| `Play Movie | Feature Film` | `Feature Film.mkv` | Clean display text with explicit action target |
 
 Supported source video extensions:
 
@@ -50,6 +50,38 @@ xlets/grin_samples/Scripts/PptxMenu/video-actions.json
 ```
 
 The same video can appear on multiple slides; it reuses the same playlist/title ID.
+
+### Clean button text with action grammar
+
+Use the preferred pipe syntax when the button should say something nicer than the filename:
+
+```text
+Button Text | Action
+```
+
+Examples:
+
+```text
+Play Movie | Feature Film
+Start at Big Reveal | Feature Film@1:00:30
+Watch the Finale | Feature Film#Finale
+Chapter 4 | Feature Film#4
+Trailer | file:Feature Film Final Export.mov
+Bonus Features | goto:Extras
+Return to Main Menu | main
+Watch Everything | play all
+Coming Soon | disabled
+```
+
+This is useful when the project has messy source names such as `Feature Film Final Export v7.mov`, but the menu should simply say `Play Movie`.
+
+Common mistakes:
+
+- **Missing video file:** `Play Movie | Main Feature` must resolve to one source video in the project folder.
+- **Ambiguous video names:** if `Main Feature Theatrical.mp4` and `Main Feature Extended.mp4` both exist, use `file:Exact Filename.ext` or a more specific action.
+- **Empty action after pipe:** `Play Movie | ` is treated as disabled and emits a parse warning.
+- **Unsupported commands:** Grammar v1 is intentionally small; slideshow, idle/attract mode, compare cuts, aliases, and project.json routing are future work.
+- **HDMV-Lite expectations:** BD-J is the working backend. HDMV-Lite still exports/scaffolds metadata and may mark timestamp/chapter/resume-style actions as future work or BD-J-required.
 
 ### Slide navigation buttons
 
@@ -114,6 +146,7 @@ k      stop running encode/autopilot/burn
 q      quit
 
 d      disc size: DVD-5 -> DVD-9 -> BD-25 -> quality/no cap
+m      menu backend: bdj working default -> hdmv experimental scaffold -> auto
 e      encoder: auto -> nvenc -> cpu
 z      resolution
 l      quality

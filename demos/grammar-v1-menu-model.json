@@ -1,0 +1,105 @@
+{
+  "schema_version": "auto-bluray-menu-model-v1",
+  "model_kind": "backend_neutral_menu_sample",
+  "description": "Sample Grammar v1 button actions for documentation/tests; not a complete authored disc model.",
+  "slides": [
+    {
+      "id": "slide1",
+      "title": "Main Menu",
+      "buttons": [
+        {
+          "id": "play_movie",
+          "label": "Play Movie",
+          "raw_text": "Play Movie | Main Feature",
+          "display_text": "Play Movie",
+          "action_text": "Main Feature",
+          "parse_warnings": [],
+          "action": {
+            "kind": "video",
+            "target": "Main Feature.mp4",
+            "video_file": "Main Feature.mp4"
+          },
+          "parsed_action": {
+            "kind": "video",
+            "target": "Main Feature.mp4",
+            "video_file": "Main Feature.mp4"
+          }
+        },
+        {
+          "id": "big_reveal",
+          "label": "Start at Big Reveal",
+          "raw_text": "Start at Big Reveal | Main Feature@1:00:30",
+          "display_text": "Start at Big Reveal",
+          "action_text": "Main Feature@1:00:30",
+          "parse_warnings": [],
+          "action": {
+            "kind": "video",
+            "target": "Main Feature.mp4",
+            "video_file": "Main Feature.mp4",
+            "start_time": "01:00:30",
+            "start_time_seconds": 3630
+          },
+          "parsed_action": {
+            "kind": "video",
+            "target": "Main Feature.mp4",
+            "video_file": "Main Feature.mp4",
+            "start_time": "01:00:30",
+            "start_time_seconds": 3630
+          }
+        },
+        {
+          "id": "finale",
+          "label": "Watch the Finale",
+          "raw_text": "Watch the Finale | Main Feature#Finale",
+          "display_text": "Watch the Finale",
+          "action_text": "Main Feature#Finale",
+          "parse_warnings": [],
+          "action": {
+            "kind": "video",
+            "target": "Main Feature.mp4",
+            "video_file": "Main Feature.mp4",
+            "chapter": "Finale"
+          },
+          "parsed_action": {
+            "kind": "video",
+            "target": "Main Feature.mp4",
+            "video_file": "Main Feature.mp4",
+            "chapter": "Finale"
+          }
+        },
+        {
+          "id": "extras",
+          "label": "Bonus Features",
+          "raw_text": "Bonus Features | goto:Extras",
+          "display_text": "Bonus Features",
+          "action_text": "goto:Extras",
+          "parse_warnings": [],
+          "action": {
+            "kind": "slide",
+            "target": "Extras"
+          },
+          "parsed_action": {
+            "kind": "slide",
+            "target": "Extras"
+          }
+        },
+        {
+          "id": "disabled",
+          "label": "Coming Soon",
+          "raw_text": "Coming Soon | disabled",
+          "display_text": "Coming Soon",
+          "action_text": "disabled",
+          "parse_warnings": [],
+          "action": {
+            "kind": "builtin",
+            "name": "disabled"
+          },
+          "parsed_action": {
+            "kind": "builtin",
+            "name": "disabled"
+          }
+        }
+      ]
+    }
+  ]
+}

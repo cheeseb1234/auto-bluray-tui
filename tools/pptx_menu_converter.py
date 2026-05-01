@@ -2,14 +2,33 @@
 from __future__ import annotations
 
 import difflib, json, re, shutil, subprocess, sys, tempfile, zipfile, xml.etree.ElementTree as ET
+import os, webbrowser
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
+from xml.sax.saxutils import escape as xml_escape
+
+from button_action_parser import (
+    VIDEO_EXTS,
+    format_timecode,
+    infer_display_text,
+    match_key,
+    parse_button_action,
+    parse_timestamp,
+    relaxed_key,
+    resolve_video_target,
+    split_display_action,
+)
 
 try:
     from menu_backends import analyze_menu_compatibility, write_compatibility_report
 except Exception:
     analyze_menu_compatibility = None
     write_compatibility_report = None
+
+try:
+    from html_menu_preview import make_preview as write_html_menu_preview
+except Exception:
+    write_html_menu_preview = None
 
 NS = {
     'a':'http://schemas.openxmlformats.org/drawingml/2006/main',
@@ -18,6 +37,7 @@ NS = {
 }
 RID = '{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id'
 RELNS = '{http://schemas.openxmlformats.org/package/2006/relationships}'
+DEFAULT_MENU_TEMPLATE = Path('/mnt/llm/example/menu-template.pptx')
 
 
 def ident(s: str) -> str:
@@ -64,6 +84,118 @@ def unique_id(base: str, used: set[str]) -> str:
     return candidate
 
 
+def project_videos(project_dir: Path) -> list[Path]:
+    return sorted([p for p in project_dir.iterdir() if p.is_file() and p.suffix.lower() in VIDEO_EXTS], key=lambda p: p.name.lower())
+
+
+def find_project_pptx(project_dir: Path) -> Path | None:
+    """Return the project's single PPTX menu, regardless of filename.
+
+    If no PPTX exists, callers can generate one.  If multiple PPTX files exist,
+    fail loudly rather than guessing which menu to author.
+    """
+    pptxs = sorted([p for p in project_dir.iterdir() if p.is_file() and p.suffix.lower() == '.pptx' and not p.name.startswith('~$')], key=lambda p: p.name.lower())
+    if not pptxs:
+        return None
+    if len(pptxs) > 1:
+        names = ', '.join(p.name for p in pptxs[:8])
+        raise SystemExit(f'Multiple .pptx files found in {project_dir}; keep exactly one menu PPTX. Found: {names}')
+    return pptxs[0]
+
+
+def split_groups(items, size=3):
+    return [items[i:i+size] for i in range(0, len(items), size)]
+
+
+def ppt_shape(shape_id: int, label: str, x: int, y: int, w: int, h: int, rid: str | None = None, *, title=False) -> str:
+    label_xml = xml_escape(label)
+    link = f'<a:hlinkClick r:id="{rid}" action="ppaction://hlinksldjump"/>' if rid else ''
+    fill = '<a:noFill/>' if title else '<a:solidFill><a:srgbClr val="729fcf"/></a:solidFill>'
+    line = '<a:ln w="0"><a:noFill/></a:ln>' if title else '<a:ln w="0"><a:solidFill><a:srgbClr val="3465a4"/></a:solidFill></a:ln>'
+    size = '2800' if title else '1800'
+    return f'''<p:sp><p:nvSpPr><p:cNvPr id="{shape_id}" name="">{link}</p:cNvPr><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="{x}" y="{y}"/><a:ext cx="{w}" cy="{h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>{fill}{line}</p:spPr><p:txBody><a:bodyPr lIns="90000" rIns="90000" tIns="45000" bIns="45000" anchor="ctr"><a:noAutofit/></a:bodyPr><a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="en-US" sz="{size}"><a:solidFill><a:srgbClr val="000000"/></a:solidFill><a:latin typeface="Arial"/></a:rPr><a:t>{label_xml}</a:t></a:r></a:p></p:txBody></p:sp>'''
+
+
+def ppt_slide_xml(title: str, buttons: list[dict], slide_w: int, slide_h: int) -> str:
+    title_w = int(slide_w * 0.68); title_h = 520000
+    title_x = (slide_w - title_w) // 2; title_y = 360000
+    btn_w = int(slide_w * 0.27); btn_h = 685800
+    start_y = int(slide_h * 0.34); gap_y = 230000
+    cols = min(3, max(1, len([b for b in buttons if b.get('kind') != 'main'])) )
+    shapes = [ppt_shape(10, title, title_x, title_y, title_w, title_h, title=True)]
+    sid = 11
+    normal = [b for b in buttons if b.get('kind') != 'main']
+    for i, b in enumerate(normal):
+        row, col = divmod(i, cols)
+        total_w = cols * btn_w + (cols - 1) * 420000
+        x = (slide_w - total_w) // 2 + col * (btn_w + 420000)
+        y = start_y + row * (btn_h + gap_y)
+        shapes.append(ppt_shape(sid, b['label'], x, y, btn_w, btn_h, b.get('rid'))); sid += 1
+    for b in [b for b in buttons if b.get('kind') == 'main']:
+        shapes.append(ppt_shape(sid, b['label'], (slide_w - btn_w)//2, int(slide_h * 0.80), btn_w, btn_h, b.get('rid'))); sid += 1
+    return f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:effectLst/></p:bgPr></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>{''.join(shapes)}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>'''
+
+
+def ppt_slide_rels(links: list[tuple[str, int]]) -> str:
+    rels = ['<?xml version="1.0" encoding="UTF-8"?>', '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">']
+    for rid, target in links:
+        rels.append(f'<Relationship Id="{rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slide{target}.xml"/>')
+    rels.append('<Relationship Id="rIdLayout" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>')
+    rels.append('</Relationships>')
+    return ''.join(rels)
+
+
+def generate_menu_pptx_from_template(project_dir: Path, pptx: Path, template: Path = DEFAULT_MENU_TEMPLATE):
+    videos = project_videos(project_dir)
+    if not videos:
+        raise SystemExit(f'No videos found in {project_dir}; cannot generate a menu PPTX')
+    if not template.exists():
+        raise SystemExit(f'No project PPTX and template missing: {template}')
+    groups = split_groups(videos, 3)
+    slide_count = 1 + len(groups)
+    with zipfile.ZipFile(template) as zin:
+        pres = ET.fromstring(zin.read('ppt/presentation.xml'))
+        size = pres.find('p:sldSz', NS).attrib
+        slide_w, slide_h = int(size['cx']), int(size['cy'])
+        tmp = pptx.with_suffix('.tmp.pptx')
+        skip = {'ppt/presentation.xml', 'ppt/_rels/presentation.xml.rels', '[Content_Types].xml'}
+        with zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as zout:
+            for item in zin.infolist():
+                if item.filename in skip or re.match(r'ppt/slides/(?:_rels/)?slide\d+\.xml(?:\.rels)?$', item.filename):
+                    continue
+                zout.writestr(item, zin.read(item.filename))
+            # Main slide: one button per generated movie page, labels list up to 3 video stems.
+            main_buttons=[]; main_links=[]
+            for i, group in enumerate(groups, 2):
+                rid=f'rId{i}'
+                main_links.append((rid, i))
+                main_buttons.append({'label': ', '.join(p.stem for p in group), 'rid': rid})
+            zout.writestr('ppt/slides/slide1.xml', ppt_slide_xml('Main Menu', main_buttons, slide_w, slide_h))
+            zout.writestr('ppt/slides/_rels/slide1.xml.rels', ppt_slide_rels(main_links))
+            for idx, group in enumerate(groups, 2):
+                buttons=[{'label': p.stem} for p in group]
+                buttons.append({'label': 'Main Menu', 'rid': 'rIdMain', 'kind': 'main'})
+                zout.writestr(f'ppt/slides/slide{idx}.xml', ppt_slide_xml(f'Videos {idx-1}', buttons, slide_w, slide_h))
+                zout.writestr(f'ppt/slides/_rels/slide{idx}.xml.rels', ppt_slide_rels([('rIdMain', 1)]))
+            sld_ids = ''.join(f'<p:sldId id="{255+i}" r:id="rId{2+i}"/>' for i in range(1, slide_count+1))
+            pres_xml = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId2"/></p:sldMasterIdLst><p:sldIdLst>{sld_ids}</p:sldIdLst><p:sldSz cx="{slide_w}" cy="{slide_h}"/><p:notesSz cx="7772400" cy="10058400"/></p:presentation>'''
+            zout.writestr('ppt/presentation.xml', pres_xml)
+            pres_rels = ['<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>']
+            for i in range(1, slide_count+1):
+                pres_rels.append(f'<Relationship Id="rId{2+i}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide{i}.xml"/>')
+            pres_rels.append('<Relationship Id="rId999" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/presProps" Target="presProps.xml"/></Relationships>')
+            zout.writestr('ppt/_rels/presentation.xml.rels', ''.join(pres_rels))
+            ct = zin.read('[Content_Types].xml').decode('utf-8')
+            ct = re.sub(r'<Override PartName="/ppt/slides/slide\d+\.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide\+xml"/>', '', ct)
+            inserts=''.join(f'<Override PartName="/ppt/slides/slide{i}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>' for i in range(1, slide_count+1))
+            ct = ct.replace('</Types>', inserts + '</Types>')
+            zout.writestr('[Content_Types].xml', ct)
+    tmp.replace(pptx)
+    print(f'Generated template menu: {pptx} ({len(videos)} videos, {slide_count} slides)')
+
+
 def find_video_match(label: str, videos: dict[str, str]):
     """Return (filename, note) for a PPTX label, with conservative autocorrection."""
     exact = videos.get(label.lower()) or videos.get(match_key(label))
@@ -94,6 +226,45 @@ def find_video_match(label: str, videos: dict[str, str]):
     return None, None
 
 
+def parse_timecode(value: str) -> int | None:
+    """Compatibility wrapper; Grammar v1 parser uses parse_timestamp."""
+    seconds, _ = parse_timestamp(value)
+    return seconds
+
+
+def split_button_action_text(raw_text: str) -> tuple[str, str, list[str]]:
+    """Compatibility wrapper for older tests/callers."""
+    return split_display_action(raw_text)
+
+
+def parse_chapter_action(label: str, videos: dict[str, str]):
+    """Compatibility wrapper for older tests/callers; prefer parse_button_action."""
+    action, warnings = parse_button_action(label, videos)
+    if action and action.get('kind') == 'video' and action.get('start_time_seconds') is not None:
+        return action, warnings[0] if warnings else None
+    return None, warnings[0] if warnings else None
+
+
+def resolve_slide_action_targets(model: dict):
+    slides = model.get('slides') or []
+    lookup = {}
+    for slide in slides:
+        for value in (slide.get('id'), slide.get('title')):
+            if value:
+                lookup.setdefault(match_key(str(value)), slide['id'])
+    for slide in slides:
+        for btn in slide.get('buttons') or []:
+            action = btn.get('action') or {}
+            if action.get('kind') == 'slide' and action.get('target_label') and not action.get('target'):
+                target = lookup.get(match_key(action['target_label']))
+                if target:
+                    action['target'] = target
+                else:
+                    warning = f'goto target "{action["target_label"]}" does not match any slide title/id'
+                    btn.setdefault('parse_warnings', []).append(warning)
+                    model.setdefault('match_warnings', []).append({'slide': slide.get('id'), 'label': btn.get('raw_text') or btn.get('label'), 'message': warning})
+
+
 def is_loop_placeholder(label: str, video_name: str|None, link: dict|None, rect: dict|None, src_size: tuple[int, int]):
     """Detect PowerPoint shapes intended to become autoplay/looping slide video.
 
@@ -119,7 +290,9 @@ def extract_slide_model(pptx: Path, project_dir: Path):
     videos = {}
     for p in project_dir.iterdir():
         if p.suffix.lower() in ('.mp4','.mkv','.m2ts','.mov'):
+            videos[p.name.lower()] = p.name
             videos[p.stem.lower()] = p.name
+            videos.setdefault(match_key(p.name), p.name)
             videos.setdefault(match_key(p.stem), p.name)
     subtitles = [p.name for p in project_dir.iterdir() if p.suffix.lower() in ('.srt','.sup','.ass','.ssa')]
     with zipfile.ZipFile(pptx) as z:
@@ -157,24 +330,43 @@ def extract_slide_model(pptx: Path, project_dir: Path):
                     elif rid and rid in rels and rels[rid]['Type'].endswith('/slide'):
                         m=re.search(r'slide(\d+)\.xml', rels[rid]['Target'])
                         if m: link={'kind':'slide','target':f'slide{m.group(1)}'}
-                video_name, match_note = find_video_match(text, videos)
-                if match_note:
-                    match_warnings.append({'slide': f'slide{idx}', 'label': text, 'message': match_note})
-                if is_loop_placeholder(text, video_name, link, rect, (src_w, src_h)):
+                has_explicit_action = '|' in text
+                display_text, action_text, split_warnings = split_button_action_text(text)
+                parsed_action, parse_warnings = parse_button_action(action_text, videos)
+                parse_warnings = split_warnings + parse_warnings
+                if link and not has_explicit_action and parsed_action.get('kind') in ('unresolved', 'invalid'):
+                    parsed_action = None
+                    parse_warnings = []
+                for warning in parse_warnings:
+                    match_warnings.append({'slide': f'slide{idx}', 'label': text, 'message': warning})
+                video_name = parsed_action.get('target') if parsed_action and parsed_action.get('kind') == 'video' else None
+                if is_loop_placeholder(action_text, video_name, link, rect, (src_w, src_h)):
                     loop_videos.append({
-                        'id': unique_id(text, used_ids), 'label': text, 'rect_emu': rect,
+                        'id': unique_id(display_text, used_ids), 'label': display_text, 'raw_text': text,
+                        'display_text': display_text, 'action_text': action_text,
+                        'parsed_action': parsed_action, 'parse_warnings': parse_warnings,
+                        'rect_emu': rect,
                         'video_file': video_name,
                     })
                     continue
-                if link or video_name:
+                parsed_is_button = parsed_action and parsed_action.get('kind') not in ('unresolved', 'invalid')
+                action = parsed_action if parsed_is_button else link
+                if action:
                     buttons.append({
-                        'id': unique_id(text, used_ids), 'label': text, 'rect_emu': rect,
-                        'action': link or {'kind':'video','target': video_name}
+                        'id': unique_id(display_text, used_ids), 'label': display_text, 'rect_emu': rect,
+                        'raw_text': text,
+                        'display_text': display_text,
+                        'action_text': action_text,
+                        'parsed_action': parsed_action,
+                        'parse_warnings': parse_warnings,
+                        'action': action,
                     })
-                if title is None and not link and not video_name:
+                if title is None and not link and not parsed_is_button:
                     title=text
             slides.append({'id':f'slide{idx}', 'title':title or f'Slide {idx}', 'texts':texts, 'buttons':buttons, 'loop_videos': loop_videos})
-    return {'source': str(pptx), 'slides': slides, 'source_size_emu':[src_w,src_h], 'videos': videos, 'subtitles': subtitles, 'match_warnings': match_warnings}
+    model = {'source': str(pptx), 'slides': slides, 'source_size_emu':[src_w,src_h], 'videos': videos, 'subtitles': subtitles, 'match_warnings': match_warnings}
+    resolve_slide_action_targets(model)
+    return model
 
 
 def assign_video_actions(model):
@@ -205,6 +397,9 @@ def assign_video_actions(model):
                 'slide': slide['id'],
                 'button': btn['label'],
                 'kind': 'button',
+                'start_time_seconds': act.get('start_time_seconds', 0),
+                'start_timecode': act.get('start_timecode', '00:00:00'),
+                'chapter_name': act.get('chapter_name'),
                 **seen[target]
             })
         if slide.get('menu_loop_video'):
@@ -479,8 +674,8 @@ def generate_show(model, out: Path):
         '                if (Debug.LEVEL > 0) { Debug.printStackTrace(t); }',
         '            }',
         '        }',
-        '        public synchronized void playVideo(String videoFile, String playlistId, String menuSegment) {',
-        '            Debug.println("PPTX_MENU_PLAY video=" + videoFile + " playlist=" + playlistId);',
+        '        public synchronized void playVideo(String videoFile, String playlistId, String menuSegment, long startSeconds) {',
+        '            Debug.println("PPTX_MENU_PLAY video=" + videoFile + " playlist=" + playlistId + " start=" + startSeconds);',
         '            try {',
         '                loopingMenuVideo = false;',
         '                currentLoopPlaylist = "";',
@@ -506,6 +701,7 @@ def generate_show(model, out: Path):
         '                    player.addControllerListener(this);',
         '                    player.prefetch();',
         '                }',
+        '                if (startSeconds > 0) { player.setMediaTime(new Time((double) startSeconds)); }',
         '                player.start();',
         '            } catch (Throwable t) {',
         '                Debug.println("PPTX_MENU_PLAY_FAILED video=" + videoFile + " playlist=" + playlistId);',
@@ -622,11 +818,28 @@ def generate_show(model, out: Path):
         for btn in buttons:
             bid=btn['id']; act=btn['action']
             if act['kind']=='slide':
-                lines.append(f"        {bid} {bid}_activated {{ activate_segment S:{act['target']}.Enter ; }}")
-            else:
+                target = act.get('target') or first
+                lines.append(f"        {bid} {bid}_activated {{ activate_segment S:{target}.Enter ; }}")
+            elif act['kind']=='video':
                 video=act['target'].replace('\\', '\\\\').replace('"', '\\"')
                 playlist=act.get('playlist_id', '00000')
-                lines.append(f"        {bid} {bid}_activated {{ activate_segment S:VideoPlayback ; sync_display ; java_command [[ playVideo(\"{video}\", \"{playlist}\", \"S:{sid}.Enter\"); ]] }}")
+                start=int(act.get('start_time_seconds') or 0)
+                lines.append(f"        {bid} {bid}_activated {{ activate_segment S:VideoPlayback ; sync_display ; java_command [[ playVideo(\"{video}\", \"{playlist}\", \"S:{sid}.Enter\", {start}); ]] }}")
+            elif act['kind']=='builtin':
+                name = act.get('name') or act.get('type')
+                if name in ('main', 'top_menu'):
+                    lines.append(f"        {bid} {bid}_activated {{ activate_segment S:{first}.Enter ; }}")
+                elif name in ('disabled', 'none'):
+                    lines.append(f"        {bid} {bid}_activated {{ }}")
+                else:
+                    # Parsed Grammar v1 built-ins that require runtime state are
+                    # carried in the neutral model until final behavior lands.
+                    lines.append(f"        {bid} {bid}_activated {{ java_command [[ stopMenuLoop(); ]] }}")
+            else:
+                # Grammar v1 can parse built-in commands before every command has
+                # final BD-J/HDMV behavior.  Keep generated menus buildable while
+                # the neutral model carries the parsed command metadata.
+                lines.append(f"        {bid} {bid}_activated {{ java_command [[ stopMenuLoop(); ]] }}")
         lines += ['    }','    mouse {']
         for btn in buttons:
             r=btn['rect_px']; lines.append(f"        {btn['id']} ( {r['x']} {r['y']} {r['x']+r['w']} {r['y']+r['h']} )")
@@ -660,7 +873,7 @@ GRIN_COMPILER_OPTIONS=-avoid_optimization
     <target name="autotest" depends="autotest-grinview"/>
 </project>
 ''')
-    (out/'README.md').write_text(f'''# PptxMenu — generated from menu.pptx
+    (out/'README.md').write_text(f'''# PptxMenu — generated from project PPTX
 
 Generated from:
 
@@ -693,8 +906,10 @@ def main():
     if len(sys.argv)!=3:
         print('usage: pptx_menu_converter.py PROJECT_DIR OUTPUT_DIR', file=sys.stderr); sys.exit(2)
     project_dir=Path(sys.argv[1]).resolve(); out=Path(sys.argv[2]).resolve()
-    pptx=project_dir/'menu.pptx'
-    if not pptx.exists(): raise SystemExit(f'No menu.pptx in {project_dir}')
+    pptx=find_project_pptx(project_dir)
+    if pptx is None:
+        pptx=project_dir/'menu.pptx'
+        generate_menu_pptx_from_template(project_dir, pptx)
     if out.exists(): shutil.rmtree(out)
     (out/'assets').mkdir(parents=True)
     model=extract_slide_model(pptx, project_dir)
@@ -711,6 +926,15 @@ def main():
     if write_compatibility_report:
         write_compatibility_report(out, model)
         (out/'menu-model.json').write_text(json.dumps(model, indent=2)+'\n')
+    if write_html_menu_preview:
+        preview_path = project_dir/'menu-preview.html'
+        write_html_menu_preview(out/'menu-model.json', preview_path, project_dir)
+        shutil.copy2(preview_path, out/'menu-preview.html')
+        if os.environ.get('AUTO_BLURAY_NO_PREVIEW_OPEN') != '1':
+            try:
+                webbrowser.open(preview_path.resolve().as_uri())
+            except Exception as exc:
+                print(f'Warning: could not auto-open menu preview: {exc}', file=sys.stderr)
     (out/'video-actions.json').write_text(json.dumps((model.get('video_actions', []) + model.get('loop_actions', [])), indent=2)+'\n')
     (out/'loop-actions.json').write_text(json.dumps(model.get('loop_actions', []), indent=2)+'\n')
     print(f'Generated {out}')

@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.0",
+  "requested_backend_default": "hdmv",
+  "hdmv_safe": true,
+  "safe_features": [
+    {
+      "feature": "static_slide_backgrounds",
+      "status": "hdmv_safe",
+      "detail": "2 rendered static slide background(s).",
+      "hdmv_lite_phase": "v0.5"
+    },
+    {
+      "feature": "button_hitboxes",
+      "status": "hdmv_safe",
+      "detail": "4 rectangular button hitbox(es).",
+      "hdmv_lite_phase": "v0.5"
+    },
+    {
+      "feature": "focus_order",
+      "status": "hdmv_safe",
+      "detail": "Focus order is derived from button geometry and can map to HDMV neighbor navigation.",
+      "hdmv_lite_phase": "v0.5"
+    },
+    {
+      "feature": "play_title_actions",
+      "status": "hdmv_safe",
+      "detail": "2 play-title action(s) targeting Blu-ray playlist ids.",
+      "hdmv_lite_phase": "v0.5"
+    },
+    {
+      "feature": "menu_page_navigation",
+      "status": "hdmv_safe",
+      "detail": "2 go-to-menu/page action(s).",
+      "hdmv_lite_phase": "v0.5"
+    }
+  ],
+  "bdj_required_features": [],
+  "unsupported_features": [],
+  "summary": {
+    "slides": 2,
+    "buttons": 4,
+    "video_actions": 2,
+    "slide_actions": 2,
+    "loop_videos": 0
+  }
+}

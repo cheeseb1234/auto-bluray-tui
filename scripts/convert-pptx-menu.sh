@@ -9,5 +9,45 @@ if [[ ! -f "$ROOT/user.vars.properties" ]]; then
 HDC_BDJ_PLATFORM_CLASSES=$ROOT/lib/stubs/enhanced/classes.zip
 EOF
 fi
+
+MENU="$(python3 - "$ROOT" "$PROJECT_DIR" <<'PY'
+import sys
+from pathlib import Path
+root = Path(sys.argv[1])
+project = Path(sys.argv[2])
+sys.path.insert(0, str(root / 'tools'))
+import pptx_menu_converter
+menu = pptx_menu_converter.find_project_pptx(project)
+print(menu if menu else '')
+PY
+)"
+
+if [[ -z "$MENU" ]]; then
+  MENU="$PROJECT_DIR/menu.pptx"
+  python3 - "$ROOT" "$PROJECT_DIR" "$MENU" <<'PY'
+import sys
+from pathlib import Path
+root = Path(sys.argv[1])
+project = Path(sys.argv[2])
+menu = Path(sys.argv[3])
+sys.path.insert(0, str(root / 'tools'))
+import pptx_menu_converter
+pptx_menu_converter.generate_menu_pptx_from_template(project, menu)
+PY
+  if command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$MENU" >/dev/null 2>&1 || true
+  fi
+  if [[ -t 0 ]]; then
+    echo
+    echo "Generated and opened: $MENU"
+    echo "Make any changes, save and exit the PPTX editor, then press any key to continue."
+    read -r -n 1 _
+    echo
+  else
+    echo "Generated $MENU. Non-interactive run: continuing without waiting for PPTX edits."
+  fi
+fi
+
 OUT="$ROOT/xlets/grin_samples/Scripts/PptxMenu"
 python3 "$ROOT/tools/pptx_menu_converter.py" "$PROJECT_DIR" "$OUT"
+echo "HTML preview: $PROJECT_DIR/menu-preview.html"

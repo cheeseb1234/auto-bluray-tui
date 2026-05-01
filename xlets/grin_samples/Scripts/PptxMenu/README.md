@@ -1,9 +1,9 @@
-# PptxMenu — generated from menu.pptx
+# PptxMenu — generated from project PPTX
 
 Generated from:
 
 ```text
-/home/corey/.openclaw/Bluray project/menu.pptx
+/tmp/bluray-project-preview.nBnfrt/menu.pptx
 ```
 
 Edit the PowerPoint, then rerun:
@@ -24,50 +24,32 @@ ant preview
 [
   {
     "slide": "slide2",
-    "button": "Video 1",
+    "button": "a",
     "action": {
       "kind": "video",
-      "target": "Video 1.mkv",
-      "video_file": "Video 1.mkv",
+      "target": "a.mp4",
+      "video_file": "a.mp4",
       "playlist_id": "00001",
       "title_number": 1,
-      "encoded_m2ts": "build/bluray-media/encoded/Video 1.m2ts"
+      "encoded_m2ts": "build/bluray-media/encoded/a.m2ts",
+      "type": "play_title",
+      "video_target": "a.mp4",
+      "playlist": "00001"
     }
   },
   {
     "slide": "slide2",
-    "button": "Video 2",
+    "button": "b",
     "action": {
       "kind": "video",
-      "target": "Video 2.mp4",
-      "video_file": "Video 2.mp4",
+      "target": "b.mp4",
+      "video_file": "b.mp4",
       "playlist_id": "00002",
       "title_number": 2,
-      "encoded_m2ts": "build/bluray-media/encoded/Video 2.m2ts"
-    }
-  },
-  {
-    "slide": "slide3",
-    "button": "Video 3",
-    "action": {
-      "kind": "video",
-      "target": "Video 3.mkv",
-      "video_file": "Video 3.mkv",
-      "playlist_id": "00003",
-      "title_number": 3,
-      "encoded_m2ts": "build/bluray-media/encoded/Video 3.m2ts"
-    }
-  },
-  {
-    "slide": "slide3",
-    "button": "Video 4",
-    "action": {
-      "kind": "video",
-      "target": "Video 4.mp4",
-      "video_file": "Video 4.mp4",
-      "playlist_id": "00004",
-      "title_number": 4,
-      "encoded_m2ts": "build/bluray-media/encoded/Video 4.m2ts"
+      "encoded_m2ts": "build/bluray-media/encoded/b.m2ts",
+      "type": "play_title",
+      "video_target": "b.mp4",
+      "playlist": "00002"
     }
   }
 ]

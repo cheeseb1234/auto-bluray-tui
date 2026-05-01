@@ -17,8 +17,10 @@ from pathlib import Path
 from typing import Any
 from xml.sax.saxutils import escape
 
-MENU_BACKENDS = ('hdmv', 'bdj', 'auto')
-DEFAULT_MENU_BACKEND = 'hdmv'
+MENU_BACKENDS = ('bdj', 'hdmv', 'auto')
+DEFAULT_MENU_BACKEND = 'bdj'
+HDMV_COMPILER_STATUS = 'ir_only_first_milestone'
+HDMV_FUNCTIONAL_COMPILER_STATUSES = {'functional'}
 
 
 class MenuBackendError(RuntimeError):
@@ -86,11 +88,31 @@ def analyze_menu_compatibility(model: dict[str, Any]) -> dict[str, Any]:
 
     video_actions = [a for a in actions if a.get('kind') == 'video']
     slide_actions = [a for a in actions if a.get('kind') == 'slide']
-    other_actions = [a for a in actions if a.get('kind') not in ('video', 'slide')]
+    builtin_actions = [a for a in actions if a.get('kind') == 'builtin']
+    other_actions = [a for a in actions if a.get('kind') not in ('video', 'slide', 'builtin')]
     if video_actions:
-        safe.append(_feature('hdmv_safe', 'play_title_actions', f'{len(video_actions)} play-title action(s) targeting Blu-ray playlist ids.', hdmv_phase='v0.5'))
+        simple_video = [a for a in video_actions if not (a.get('start_time_seconds') or a.get('chapter') or a.get('chapter_name') or a.get('chapter_number'))]
+        timed_or_chapter = [a for a in video_actions if a not in simple_video]
+        if simple_video:
+            safe.append(_feature('hdmv_safe', 'play_title_actions', f'{len(simple_video)} play-title action(s) targeting Blu-ray playlist ids.', hdmv_phase='v0.5'))
+        if timed_or_chapter:
+            bdj_required.append(_feature('bdj_required', 'timed_or_chapter_video_actions', f'{len(timed_or_chapter)} timestamp/chapter start action(s) are BD-J-supported metadata today; HDMV-Lite command compilation for them is future work.', hdmv_phase='future'))
     if slide_actions:
         safe.append(_feature('hdmv_safe', 'menu_page_navigation', f'{len(slide_actions)} go-to-menu/page action(s).', hdmv_phase='v0.5'))
+    if builtin_actions:
+        safe_names = {'main', 'top_menu', 'disabled', 'none'}
+        safe_builtins = [a for a in builtin_actions if a.get('name') in safe_names]
+        future_builtins = [a for a in builtin_actions if a.get('name') in {'back', 'play_all'}]
+        bdj_builtins = [a for a in builtin_actions if a.get('name') in {'resume', 'replay'}]
+        unknown_builtins = [a for a in builtin_actions if a not in safe_builtins + future_builtins + bdj_builtins]
+        if safe_builtins:
+            safe.append(_feature('hdmv_safe', 'safe_builtin_actions', 'Built-in main/top-menu/disabled/none actions do not require BD-J-only playback logic.', hdmv_phase='v0.5'))
+        if future_builtins:
+            bdj_required.append(_feature('bdj_required', 'future_builtin_actions', 'Built-in back/play-all actions need final HDMV command behavior before HDMV-Lite can author them.', hdmv_phase='future'))
+        if bdj_builtins:
+            bdj_required.append(_feature('bdj_required', 'bdj_runtime_builtin_actions', 'Built-in resume/replay actions require BD-J/runtime playback state in the current implementation.'))
+        for action in unknown_builtins:
+            unsupported.append(_feature('unsupported', 'unknown_builtin_action', f'Unknown built-in action: {action.get("name")!r}.'))
     for action in other_actions:
         bdj_required.append(_feature('bdj_required', 'custom_action', f'Unsupported action kind for HDMV-Lite scaffold: {action.get("kind")!r}.'))
 
@@ -104,6 +126,8 @@ def analyze_menu_compatibility(model: dict[str, Any]) -> dict[str, Any]:
     report = {
         'schema_version': '1.0',
         'requested_backend_default': DEFAULT_MENU_BACKEND,
+        'hdmv_compiler_status': HDMV_COMPILER_STATUS,
+        'hdmv_compiler_functional': HDMV_COMPILER_STATUS in HDMV_FUNCTIONAL_COMPILER_STATUSES,
         'hdmv_safe': not bdj_required and not unsupported,
         'safe_features': safe,
         'bdj_required_features': bdj_required,
@@ -132,6 +156,7 @@ def write_compatibility_report(menu_dir: Path, model: dict[str, Any], requested_
         '',
         f"Requested backend: `{requested_backend or '-'}`",
         f"Selected backend: `{selected_backend or '-'}`",
+        f"HDMV-Lite compiler status: `{report['hdmv_compiler_status']}`",
         f"HDMV-safe: `{'yes' if report['hdmv_safe'] else 'no'}`",
         '',
         '## HDMV-safe features',
@@ -163,7 +188,9 @@ def select_backend(requested: str, report: dict[str, Any]) -> str:
     if requested not in MENU_BACKENDS:
         raise MenuBackendError(f'Unknown menu backend {requested!r}; choose one of: {", ".join(MENU_BACKENDS)}')
     if requested == 'auto':
-        return 'hdmv' if report.get('hdmv_safe') else 'bdj'
+        if report.get('hdmv_safe') and report.get('hdmv_compiler_status') in HDMV_FUNCTIONAL_COMPILER_STATUSES:
+            return 'hdmv'
+        return 'bdj'
     return requested
 
 
@@ -317,6 +344,8 @@ def build_hdmv_lite_model(model: dict[str, Any], menu_dir: Path) -> tuple[dict[s
             if kind == 'video':
                 playlist_id = str(action.get('playlist_id') or action.get('playlist') or '').zfill(5)
                 title_number = action.get('title_number')
+                if action.get('start_time_seconds') or action.get('chapter') or action.get('chapter_name') or action.get('chapter_number'):
+                    errors.append(_hdmv_lite_error('Timestamp/chapter play-title actions are HDMV-Lite future work until final command compilation is implemented.', slide=slide_id, button=button_id))
                 if not playlist_id or playlist_id == '00000' or not title_number:
                     errors.append(_hdmv_lite_error('Play-title actions require playlist_id and title_number.', slide=slide_id, button=button_id))
                 target_key = playlist_id or str(title_number)
@@ -338,6 +367,18 @@ def build_hdmv_lite_model(model: dict[str, Any], menu_dir: Path) -> tuple[dict[s
                     'type': 'return_main_menu' if target == main_slide_id else 'go_to_menu',
                     'target_menu': target,
                 }
+            elif kind == 'builtin':
+                name = action.get('name') or action.get('type')
+                if name in ('main', 'top_menu'):
+                    hdmv_action = {'type': 'return_main_menu', 'target_menu': main_slide_id, 'builtin': name}
+                elif name in ('disabled', 'none'):
+                    hdmv_action = {'type': 'noop', 'builtin': name}
+                elif name in ('back', 'play_all'):
+                    errors.append(_hdmv_lite_error(f'Built-in action {name!r} is HDMV-Lite future work until final command compilation is implemented.', slide=slide_id, button=button_id))
+                    hdmv_action = {'type': 'unsupported', 'builtin': name}
+                else:
+                    errors.append(_hdmv_lite_error(f'Built-in action {name!r} requires BD-J/runtime playback state in the current implementation.', slide=slide_id, button=button_id))
+                    hdmv_action = {'type': 'unsupported', 'builtin': name}
             else:
                 errors.append(_hdmv_lite_error(f'Unsupported HDMV-Lite action kind: {kind!r}', slide=slide_id, button=button_id))
                 hdmv_action = {'type': 'unsupported', 'kind': kind}
@@ -373,7 +414,7 @@ def build_hdmv_lite_model(model: dict[str, Any], menu_dir: Path) -> tuple[dict[s
     return {
         'schema_version': 'auto-bluray-hdmv-lite-v1',
         'backend': 'hdmv',
-        'compiler_status': 'ir_only_first_milestone',
+        'compiler_status': HDMV_COMPILER_STATUS,
         'capabilities': {
             'static_menu_pages': True,
             'single_background_image_per_page': True,
@@ -472,7 +513,7 @@ def _try_compile_hdmv_xml(root: Path, xml_path: Path, binary_path: Path) -> bool
 
 class HdmvMenuBackend(MenuBackend):
     name = 'hdmv'
-    description = 'HDMV-Lite first milestone: static menu IR, no Java, clear fallback for unsupported features.'
+    description = 'Experimental HDMV-Lite scaffold: exports static menu IR/metadata only; not a functional final menu compiler yet.'
 
     def install(self, *, root: Path, project: Path, menu_dir: Path, disc_root: Path, output_root: Path, model: dict[str, Any]) -> dict[str, Any]:
         report = write_compatibility_report(menu_dir, model, requested_backend='hdmv', selected_backend='hdmv')

@@ -74,15 +74,15 @@ pptx-menu.txt            generated GRIN script for the BD-J backend
 assets/*.png             slide backgrounds and button state overlays
 ```
 
-## Menu backends: HDMV, BD-J, and auto
+## Menu backends: BD-J, HDMV-Lite, and auto
 
 Auto Blu-ray TUI now separates PowerPoint parsing from Blu-ray menu authoring. The converter first emits a backend-neutral `menu-model.json`, then a backend selector chooses how to author that model.
 
 Backend values:
 
-- `hdmv` — default. Validates that the model uses only the current HDMV-Lite-safe feature subset, then fails clearly because actual HDMV compilation is not implemented yet.
-- `bdj` — current production path. Builds the generated GRIN script and installs/signs the BD-J Xlet/JAR/BDJO artifacts.
-- `auto` — chooses `hdmv` when the compatibility report is HDMV-safe; otherwise falls back to `bdj` when BD-J-only features are detected.
+- `bdj` — default and current working production path. Builds the generated GRIN script and installs/signs the BD-J Xlet/JAR/BDJO artifacts.
+- `hdmv` — experimental HDMV-Lite path. It validates the current HDMV-Lite-safe subset and exports/scaffolds menu metadata, but it does not yet compile functional Interactive Graphics streams or final HDMV menu commands.
+- `auto` — currently resolves to `bdj` for final discs. It must not choose `hdmv` until the HDMV `compiler_status` is functional.
 
 Use BD-J for working discs today:
 
@@ -90,18 +90,18 @@ Use BD-J for working discs today:
 ./scripts/create-final-bluray-iso.sh "/path/to/project" --menu-backend bdj
 ```
 
-The TUI persists the same setting in `build/bluray-media/encode-options.json`; press `m` to cycle `hdmv` / `bdj` / `auto`.
+The TUI persists the same setting in `build/bluray-media/encode-options.json`; press `m` to cycle `bdj` / `hdmv` / `auto`.
 
 ### Current HDMV-Lite status
 
-The HDMV backend now implements the first conservative HDMV-Lite milestone. It accepts HDMV-safe neutral menu models and emits a Java-free HDMV-Lite authoring package under `build/final-bluray/hdmv-lite/` containing:
+The HDMV backend implements the first conservative HDMV-Lite scaffold milestone. It accepts HDMV-safe neutral menu models and emits a Java-free HDMV-Lite authoring package under `build/final-bluray/hdmv-lite/` containing:
 
 - `hdmv-lite-menu.json` static menu/page/button/action IR
 - copied static background assets
 - `index.xml` and `MovieObject.xml` skeletons
 - `index.bdmv` / `MovieObject.bdmv` when the bundled DiscCreationTools converters are available
 
-This is still not a full Interactive Graphics compiler. The generated package proves the static menu model, hitboxes, and simple actions are representable; final IG stream and HDMV command bytecode compilation are the next milestone.
+This is still not a full Interactive Graphics compiler and not a functional final HDMV menu backend. The generated package proves the static menu model, hitboxes, and simple actions are representable; final IG stream and HDMV command bytecode compilation are the next milestone.
 
 HDMV-Lite accepted in the current model:
 
@@ -152,6 +152,89 @@ Video file:      Just.Friends.2005.720p.mp4
 ```
 
 The converter writes informational warnings for relaxed/fuzzy matches so the TUI can surface them during preflight.
+
+### Button action grammar v1
+
+Preferred custom display syntax:
+
+```text
+Button Text | Action
+```
+
+The left side becomes the visible/display text; the right side is parsed as the action. If there is no pipe, display text is inferred from the action text, preserving existing filename matching while hiding timestamp/chapter suffixes from the generated model.
+
+Supported actions:
+
+```text
+VideoName
+VideoName@timestamp
+VideoName#ChapterName
+VideoName#ChapterNumber
+goto:SlideName
+menu:SlideName
+slide:SlideName
+file:Exact Filename.ext
+back
+main
+top menu
+resume
+replay
+play all
+disabled
+none
+```
+
+Examples:
+
+```text
+Play Movie | Main Feature
+Start at Big Reveal | Main Feature@1:00:30
+Big Reveal | Main Feature#Big Reveal
+Chapter 4 | Main Feature#4
+Bonus Features | goto:Extras
+Bonus Features | menu:Extras
+Trailer | file:Trailer Final Export.mov
+Return to Main Menu | main
+Coming Soon | disabled
+```
+
+Quoted display syntax is also accepted, but pipe syntax is preferred:
+
+```text
+"Play Movie" Main Feature
+```
+
+The parser lives in `tools/button_action_parser.py`. PPTX extraction calls it before backend-specific authoring and stores normalized data in the neutral menu model:
+
+```json
+{
+  "raw_text": "Start at Big Reveal | Main Feature@1:00:30",
+  "display_text": "Start at Big Reveal",
+  "action_text": "Main Feature@1:00:30",
+  "action": {
+    "kind": "video",
+    "target": "Main Feature.mp4",
+    "video_file": "Main Feature.mp4",
+    "start_time": "01:00:30"
+  },
+  "parse_warnings": []
+}
+```
+
+The same parsed `action` is then evaluated by both backends: BD-J generation turns supported actions into GRIN/Java commands, while HDMV-Lite compatibility classifies whether each action is currently safe, future-work, BD-J-required, or unsupported.
+
+Current Grammar v1 backend status:
+
+| Action | BD-J / GRIN today | HDMV-Lite status |
+| --- | --- | --- |
+| `VideoName` / `file:` | Supported as play-title button | HDMV-safe metadata; final compiler still scaffold-only |
+| `VideoName@timestamp` | Parsed and passed to BD-J playback hook | Future work / BD-J-required in compatibility report |
+| `VideoName#Chapter` / `#4` | Parsed into neutral metadata | Future work / BD-J-required in compatibility report |
+| `goto:` / `menu:` / `slide:` | Supported as menu segment navigation | HDMV-safe metadata |
+| `main` / `top menu` | Supported as navigation to first menu | HDMV-safe metadata |
+| `disabled` / `none` | Supported as no-op button | HDMV-safe no-op metadata |
+| `back` / `play all` | Parsed; final runtime behavior is future work | Future work until HDMV command behavior exists |
+| `resume` / `replay` | Parsed; needs runtime playback state | BD-J-required / unsupported for HDMV-Lite today |
 
 ## Slide navigation
 

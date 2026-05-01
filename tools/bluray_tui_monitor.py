@@ -19,8 +19,8 @@ except Exception:
 try:
     from menu_backends import DEFAULT_MENU_BACKEND, MENU_BACKENDS, analyze_menu_compatibility
 except Exception:
-    DEFAULT_MENU_BACKEND = 'hdmv'
-    MENU_BACKENDS = ('hdmv', 'bdj', 'auto')
+    DEFAULT_MENU_BACKEND = 'bdj'
+    MENU_BACKENDS = ('bdj', 'hdmv', 'auto')
     analyze_menu_compatibility = None
 
 ENCODERS = ['auto', 'nvenc', 'cpu']
@@ -38,10 +38,21 @@ DISC_PRESET_LABELS = {
 DISC_PRESET_CAPACITY = {'dvd5': 4_700_000_000, 'dvd9': 8_500_000_000, 'bd25': 25_000_000_000}
 SUPPORTED_VIDEO_EXTS = ('.mp4', '.mkv', '.m2ts', '.mov')
 
+
+def find_project_pptx(project: Path):
+    if pptx_menu_converter:
+        return pptx_menu_converter.find_project_pptx(project)
+    pptxs = sorted([p for p in project.iterdir() if p.is_file() and p.suffix.lower() == '.pptx' and not p.name.startswith('~$')], key=lambda p: p.name.lower())
+    if not pptxs:
+        return None
+    if len(pptxs) > 1:
+        raise RuntimeError('Multiple .pptx files found; keep exactly one menu PPTX.')
+    return pptxs[0]
+
 WORKFLOW_STEPS = [
     ('fetch-opensubtitles', 'Fetch missing subtitles'),
     ('analyze', 'Analyze project/media'),
-    ('convert-pptx-menu', 'Process menu.pptx'),
+    ('convert-pptx-menu', 'Process menu PPTX'),
     ('get-tsmuxer', 'Check/install tsMuxer'),
     ('prepare-bluray-media', 'Encode Blu-ray media'),
     ('create-bluray-authoring-plan', 'Create authoring plan'),
@@ -150,8 +161,11 @@ def video_files(project: Path):
 
 def project_input_files(project: Path):
     files = []
-    menu = project / 'menu.pptx'
-    if menu.exists():
+    try:
+        menu = find_project_pptx(project)
+    except Exception:
+        menu = None
+    if menu and menu.exists():
         files.append(menu)
     files.extend(video_files(project))
     try:
@@ -200,12 +214,19 @@ def project_diagnostics(project: Path, root: Path, rows=None, meta=None, cfg=Non
     def add(severity, message, fix=''):
         issues.append({'severity': severity, 'message': message, 'fix': fix})
 
-    menu = project / 'menu.pptx'
     vids = video_files(project)
-    if not menu.exists():
-        add('error', 'Missing menu.pptx in the project folder.', 'Add/export the PowerPoint menu as menu.pptx.')
+    try:
+        menu = find_project_pptx(project)
+    except Exception as e:
+        menu = None
+        add('error', str(e), 'Keep exactly one .pptx menu file in the project folder.')
+    if not menu:
+        if vids and pptx_menu_converter:
+            add('info', 'Missing .pptx menu; autopilot will generate and open an editable menu template before continuing.', 'Save/exit PowerPoint or LibreOffice after edits, then press any key in the TUI.')
+        else:
+            add('error', 'Missing .pptx menu in the project folder.', 'Add/export one PowerPoint menu, or add videos so a template can be generated.')
     if not vids:
-        add('error', 'No supported video files found beside menu.pptx.', 'Use .mkv, .mp4, .m2ts, or .mov files in the project folder.')
+        add('error', 'No supported video files found beside the menu PPTX.', 'Use .mkv, .mp4, .m2ts, or .mov files in the project folder.')
 
     normalized = {}
     for p in vids:
@@ -228,7 +249,7 @@ def project_diagnostics(project: Path, root: Path, rows=None, meta=None, cfg=Non
         add('info', 'Some videos have no sidecar subtitles; autopilot will search OpenSubtitles before analyzing media.', ', '.join(videos_without_sidecars[:6]))
 
     model = None
-    if menu.exists() and vids and pptx_menu_converter:
+    if menu and menu.exists() and vids and pptx_menu_converter:
         try:
             model = pptx_menu_converter.extract_slide_model(menu, project)
             pptx_menu_converter.assign_video_actions(model)
@@ -236,7 +257,7 @@ def project_diagnostics(project: Path, root: Path, rows=None, meta=None, cfg=Non
             buttons = [b for s in slides for b in s.get('buttons', [])]
             actions = model.get('video_actions') or []
             if not slides:
-                add('error', 'menu.pptx contains no slides.', 'Add at least one slide with video buttons.')
+                add('error', f'{menu.name} contains no slides.', 'Add at least one slide with video buttons.')
             if not buttons:
                 add('error', 'No clickable PPTX menu buttons were detected.', 'Use button text that matches a video name or add slide hyperlinks.')
             if not actions:
@@ -258,12 +279,12 @@ def project_diagnostics(project: Path, root: Path, rows=None, meta=None, cfg=Non
                     else:
                         add('warning', 'menu_backend=hdmv is selected, but this menu requires BD-J features.', 'Use menu_backend=auto/bdj or remove BD-J-only features; see generated menu-compatibility.md after conversion.')
                 elif backend == 'auto' and compat.get('hdmv_safe'):
-                    add('warning', 'menu_backend=auto would choose HDMV for this safe menu, but HDMV-Lite compilation is scaffold-only in this release.', 'Use menu_backend=bdj for a working disc until HDMV-Lite compilation is implemented.')
+                    add('info', 'menu_backend=auto will stay on BD-J because HDMV-Lite compilation is scaffold-only in this release.', 'Auto must not choose HDMV until HDMV compiler_status is functional.')
             for warn in model.get('match_warnings') or []:
                 add('info', warn.get('message', 'Auto-corrected a menu/video filename match.'), 'Review generated video-actions.json if this was unexpected.')
         except Exception as e:
-            add('error', f'Could not parse menu.pptx for preflight checks: {e}', 'Open/re-save the PPTX, then retry.')
-    elif menu.exists() and vids and not pptx_menu_converter:
+            add('error', f'Could not parse {menu.name} for preflight checks: {e}', 'Open/re-save the PPTX, then retry.')
+    elif menu and menu.exists() and vids and not pptx_menu_converter:
         add('warning', 'PPTX preflight parser could not be loaded.', 'Run the converter step to reveal menu issues.')
 
     for row in rows:
@@ -281,8 +302,8 @@ def project_diagnostics(project: Path, root: Path, rows=None, meta=None, cfg=Non
 
     iso = final_iso_path(project)
     report = project / 'build' / 'final-bluray' / 'final-report.json'
-    if iso.exists() and menu.exists() and iso.stat().st_mtime < menu.stat().st_mtime:
-        add('warning', 'The final ISO is older than menu.pptx.', 'Rebuild the final ISO before burning.')
+    if iso.exists() and menu and menu.exists() and iso.stat().st_mtime < menu.stat().st_mtime:
+        add('warning', f'The final ISO is older than {menu.name}.', 'Rebuild the final ISO before burning.')
     if model and report.exists():
         try:
             report_data = read_json(report) or {}
@@ -441,6 +462,7 @@ run_step analyze {shell_quote(scripts / 'analyze-bluray-project.sh')} "$PROJECT"
 
 CURRENT_STEP=convert-pptx-menu
 run_step convert-pptx-menu {shell_quote(scripts / 'convert-pptx-menu.sh')} "$PROJECT"
+echo "HTML menu preview: $PROJECT/menu-preview.html"
 python3 - "$ROOT" <<'PY'
 import json, sys
 from pathlib import Path
@@ -490,7 +512,7 @@ import json, sys
 from pathlib import Path
 path = Path(sys.argv[1]) / 'xlets/grin_samples/Scripts/PptxMenu/menu-compatibility.json'
 data = json.loads(path.read_text())
-raise SystemExit(0 if data.get('hdmv_safe') else 1)
+raise SystemExit(0 if data.get('hdmv_safe') and data.get('hdmv_compiler_status') == 'functional' else 1)
 PY
   then
     NEEDS_BDJ=0
@@ -1093,7 +1115,7 @@ def draw_controls(stdscr, y, width):
     lines = [
         'Actions: w Full autopilot (subtitles -> encode -> ISO -> burn) | Enter Encode media only | b Burn ISO | k Stop work | q Quit',
         'View: r Refresh | v Cycle burner',
-        'Options: d Disc size | e Encoder | z Resolution | l Quality | p NVENC preset | a Audio | o Only one video | s Smoke test',
+        'Options: d Disc size | m Menu backend (BD-J working / HDMV experimental / auto) | e Encoder | z Resolution | l Quality | p NVENC preset | a Audio | o Only one video | s Smoke test',
     ]
     for i, line in enumerate(lines):
         safe_add(stdscr, y + i, 0, line, width - 1, color('dim') if i else curses.A_NORMAL)
@@ -1176,6 +1198,56 @@ def safe_add(stdscr, y, x, text, width, attr=curses.A_NORMAL):
         pass
 
 
+def ensure_menu_template_interactive(stdscr, project: Path, root: Path):
+    """If no PPTX menu is present, generate it, open it, and wait for the user.
+
+    Full autopilot is intentionally paused here: the generated template is safe
+    and complete, but the human should get one chance to tweak labels/layout in
+    PowerPoint/LibreOffice before encoding/burning starts.
+    """
+    try:
+        existing = find_project_pptx(project)
+    except Exception as e:
+        return False, str(e)
+    if existing:
+        return True, None
+    menu = project / 'menu.pptx'
+    if not pptx_menu_converter:
+        return False, 'Cannot generate a menu PPTX because pptx_menu_converter could not be loaded.'
+    if not video_files(project):
+        return False, 'Cannot generate a menu PPTX because no supported videos were found.'
+    try:
+        pptx_menu_converter.generate_menu_pptx_from_template(project, menu)
+    except Exception as e:
+        return False, f'Failed to generate menu PPTX: {e}'
+    try:
+        subprocess.Popen(['xdg-open', str(menu)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except Exception as e:
+        return False, f'Generated {menu}, but could not open it: {e}'
+
+    stdscr.nodelay(False)
+    stdscr.erase()
+    h, w = stdscr.getmaxyx()
+    lines = [
+        f'Generated and opened {menu.name}',
+        '',
+        str(menu),
+        '',
+        'Make any menu edits now in PowerPoint/LibreOffice.',
+        'Save the PPTX and exit the editor when you are done.',
+        '',
+        'Then press any key here to continue full autopilot.',
+    ]
+    y = max(1, h // 2 - len(lines) // 2)
+    for i, line in enumerate(lines):
+        safe_add(stdscr, y + i, 2, line, w - 4, color('accent_bold', curses.A_BOLD) if i == 0 else curses.A_NORMAL)
+    stdscr.refresh()
+    stdscr.getch()
+    stdscr.nodelay(True)
+    preview = project / 'menu-preview.html'
+    return True, f'Generated {menu.name}; HTML preview will be at {preview}; continuing autopilot after user confirmation.'
+
+
 def draw(stdscr, project: Path, root: Path):
     try:
         curses.curs_set(0)
@@ -1221,8 +1293,9 @@ def draw(stdscr, project: Path, root: Path):
                 rc, log = run_initial_analyze(root, project)
                 message = f'Initial analysis complete; log {log}' if rc == 0 else f'Initial analysis failed rc={rc}; log {log}'
             if key in (ord('w'), ord('W')):
+                ok, prompt_msg = ensure_menu_template_interactive(stdscr, project, root)
                 workflow = read_workflow_state(project)
-                blockers = blocking_preflight_issues(project, root, cfg)
+                blockers = blocking_preflight_issues(project, root, cfg) if ok else [{'message': prompt_msg or 'menu template generation failed'}]
                 if blockers:
                     message = 'Preflight blocked autopilot: ' + blockers[0].get('message', 'fix project inputs first')
                 elif workflow.get('pid') and workflow.get('status') == 'running' and pid_running(workflow.get('pid')):
@@ -1231,6 +1304,8 @@ def draw(stdscr, project: Path, root: Path):
                     try:
                         pid, log = start_workflow(root, project, cfg)
                         message = f'Started autopilot PID {pid}; log {log}'
+                        if prompt_msg:
+                            message = prompt_msg + ' ' + message
                     except Exception as e:
                         message = f'Failed to start autopilot: {e}'
             if key in (ord('k'), ord('K')):
@@ -1345,8 +1420,9 @@ def draw(stdscr, project: Path, root: Path):
                         message = f'Failed to start encode: {e}'
                 break
             if key in (ord('w'), ord('W')):
+                ok, prompt_msg = ensure_menu_template_interactive(stdscr, project, root)
                 workflow = read_workflow_state(project)
-                blockers = blocking_preflight_issues(project, root, cfg)
+                blockers = blocking_preflight_issues(project, root, cfg) if ok else [{'message': prompt_msg or 'menu template generation failed'}]
                 if running_rows(rows):
                     message = 'Encode already running; TUI has control. Press k to stop it first.'
                 elif blockers:
@@ -1357,6 +1433,8 @@ def draw(stdscr, project: Path, root: Path):
                     try:
                         pid, log = start_workflow(root, project, cfg)
                         message = f'Started autopilot PID {pid}; log {log}'
+                        if prompt_msg:
+                            message = prompt_msg + ' ' + message
                     except Exception as e:
                         message = f'Failed to start autopilot: {e}'
                 break

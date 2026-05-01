@@ -1,0 +1,144 @@
+name: Build release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows
+            os: windows-latest
+            executable: auto-bluray-tui.exe
+            data-separator: ";"
+            archive: auto-bluray-tui-windows.zip
+          - name: macos
+            os: macos-latest
+            executable: auto-bluray-tui
+            data-separator: ":"
+            archive: auto-bluray-tui-macos.zip
+          - name: linux
+            os: ubuntu-latest
+            executable: auto-bluray-tui
+            data-separator: ":"
+            archive: auto-bluray-tui-linux.zip
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller
+          if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
+        shell: bash
+
+      - name: Ensure release readme exists
+        run: |
+          if [ ! -f README_RELEASE.md ]; then
+            cat > README_RELEASE.md <<'EOF'
+          # Auto Blu-ray TUI Release
+
+          This archive contains a platform-specific Auto Blu-ray TUI launcher,
+          the cross-platform dependency installer (`install.py`), and bundled
+          project support files needed by the launcher.
+
+          ## Quick start
+
+          1. Run `python install.py` to install system dependencies and create `.venv`.
+          2. Run the bundled `auto-bluray-tui` executable with your project path.
+          EOF
+          fi
+        shell: bash
+
+      - name: Build standalone executable with PyInstaller
+        run: >-
+          pyinstaller
+          --noconfirm
+          --clean
+          --onedir
+          --name auto-bluray-tui
+          --add-data "lib${{ matrix.data-separator }}lib"
+          --add-data "tools${{ matrix.data-separator }}tools"
+          start.py
+        shell: bash
+
+      - name: Rename Windows executable
+        if: runner.os == 'Windows'
+        run: |
+          if [ -f dist/auto-bluray-tui/auto-bluray-tui.exe ]; then
+            mv dist/auto-bluray-tui/auto-bluray-tui.exe dist/auto-bluray-tui/${{ matrix.executable }}
+          fi
+        shell: bash
+
+      - name: Stage release archive
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import shutil
+          import zipfile
+
+          archive_name = "${{ matrix.archive }}"
+          executable = "${{ matrix.executable }}"
+          dist_dir = Path("dist") / "auto-bluray-tui"
+          stage = Path("release-stage") / "auto-bluray-tui-${{ matrix.name }}"
+
+          if stage.exists():
+              shutil.rmtree(stage)
+          stage.mkdir(parents=True)
+
+          if not dist_dir.exists():
+              raise SystemExit(f"Missing PyInstaller output: {dist_dir}")
+
+          # Keep the whole onedir bundle so PyInstaller's runtime files and the
+          # bundled lib/tools data directories stay beside the executable.
+          shutil.copytree(dist_dir, stage / "app")
+
+          for filename in ("install.py", "README_RELEASE.md"):
+              source = Path(filename)
+              if not source.exists():
+                  raise SystemExit(f"Missing required release file: {filename}")
+              shutil.copy2(source, stage / filename)
+
+          exe_path = stage / "app" / executable
+          if not exe_path.exists():
+              raise SystemExit(f"Missing expected executable: {exe_path}")
+
+          archive_path = Path(archive_name)
+          if archive_path.exists():
+              archive_path.unlink()
+          with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+              for path in sorted(stage.rglob("*")):
+                  if path.is_file():
+                      zf.write(path, path.relative_to(stage.parent))
+          print(f"Created {archive_path}")
+          PY
+        shell: bash
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: ${{ matrix.archive }}
+          if-no-files-found: error
+
+      - name: Upload archive to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.archive }}

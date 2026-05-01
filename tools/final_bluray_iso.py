@@ -315,7 +315,7 @@ def main():
     ap.add_argument('--disc-preset', choices=['quality', 'dvd5', 'dvd9', 'bd25'], default='bd25', help='disc size target for final capacity validation')
     ap.add_argument('--allow-oversized', action='store_true', help='allow outputs above selected disc bitrate/size guardrails')
     ap.add_argument('--no-iso', action='store_true', help='build final BDMV tree only')
-    ap.add_argument('--menu-backend', choices=MENU_BACKENDS, default=DEFAULT_MENU_BACKEND, help='menu authoring backend: hdmv scaffold, bdj/GRIN, or auto-select; default: hdmv')
+    ap.add_argument('--menu-backend', choices=MENU_BACKENDS, default=DEFAULT_MENU_BACKEND, help='menu authoring backend: bdj/GRIN working default, hdmv experimental scaffold, or auto-select; default: bdj')
     args = ap.parse_args()
 
     project = Path(args.project_dir).resolve()
