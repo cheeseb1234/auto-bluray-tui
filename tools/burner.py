@@ -13,6 +13,7 @@ contained and testable.
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import platform
 import shutil
@@ -21,6 +22,9 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Sequence
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -191,6 +195,11 @@ class WindowsBurnStrategy(BurnStrategy):
             if root:
                 yield Path(root) / "ImgBurn" / "ImgBurn.exe"
 
+        # Explicit common defaults requested by the app requirements. Keep these
+        # even when tests/nonstandard shells do not populate ProgramFiles vars.
+        yield Path(r"C:\Program Files (x86)\ImgBurn\ImgBurn.exe")
+        yield Path(r"C:\Program Files\ImgBurn\ImgBurn.exe")
+
     def _imgburn(self) -> Path | None:
         for candidate in self._imgburn_candidates():
             if candidate.is_file():
@@ -210,45 +219,73 @@ class WindowsBurnStrategy(BurnStrategy):
                 return candidate
         return None
 
+    def _native_drive_letter(self) -> str | None:
+        powershell = shutil.which("powershell.exe") or shutil.which("powershell") or shutil.which("pwsh")
+        if powershell:
+            result = self._capture([
+                powershell,
+                "-NoProfile",
+                "-Command",
+                "Get-CimInstance Win32_CDROM | Where-Object { $_.Drive } | Select-Object -First 1 -ExpandProperty Drive",
+            ])
+            if result and result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    drive = line.strip()
+                    if len(drive) >= 2 and drive[1] == ":":
+                        return drive[:2]
+
+        wmic = shutil.which("wmic.exe") or shutil.which("wmic")
+        if wmic:
+            result = self._capture([wmic, "cdrom", "get", "drive"], timeout=10)
+            if result and result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    drive = line.strip()
+                    if len(drive) >= 2 and drive[1] == ":":
+                        return drive[:2]
+
+        return None
+
     def detect_drive(self) -> Drive | None:
         if self.preferred_drive:
             return Drive(self.preferred_drive, "preferred drive", self.name)
 
-        # ImgBurn can auto-select the writer if /DEST is omitted. For native
-        # isoburn.exe, Windows shows/selects the burner through its own UI.
-        if self._imgburn():
-            return Drive("auto", "ImgBurn auto-detected writer", self.name)
-        if self._isoburn():
-            return Drive("auto", "Windows Disc Image Burner", self.name)
+        drive = self._native_drive_letter()
+        if drive:
+            return Drive(drive, "Windows optical drive", self.name)
+
+        if self._imgburn() or self._isoburn():
+            return Drive("D:", "default Windows optical drive", self.name)
         return None
 
     def burn_iso(self, iso_path: Path) -> bool:
+        drive = self.detect_drive()
+        if not drive:
+            print("No Windows optical drive detected.", file=sys.stderr)
+            return False
+
         imgburn = self._imgburn()
         if imgburn:
-            cmd = [
+            # ImgBurn provides the most automatable Windows burn path and reports
+            # useful progress through its own process/log window.
+            return self._stream([
                 str(imgburn),
                 "/MODE", "WRITE",
                 "/SRC", str(iso_path),
+                "/DEST", drive.device,
                 "/START",
-                "/WAITFORMEDIA",
                 "/CLOSESUCCESS",
-                "/NOIMAGEDETAILS",
-            ]
-            if self.preferred_drive:
-                cmd.extend(["/DEST", self.preferred_drive])
-            return self._stream(cmd)
+            ])
 
         isoburn = self._isoburn()
         if isoburn:
-            # /Q asks Windows Disc Image Burner to start without the initial UI
-            # when possible. It may still show native UI and does not expose rich
-            # console progress, but it is the closest built-in Windows fallback.
-            cmd = [str(isoburn)]
-            if self.preferred_drive:
-                cmd.extend(["/Q", self.preferred_drive, str(iso_path)])
-            else:
-                cmd.append(str(iso_path))
-            return self._stream(cmd)
+            # Native fallback: isoburn.exe may launch a background GUI and does
+            # not provide rich console progress metrics. Prefer ImgBurn when
+            # silent/observable automation matters.
+            LOGGER.warning(
+                "Falling back to Windows isoburn.exe; it may launch a background GUI "
+                "and will not provide rich console progress metrics."
+            )
+            return self._stream([str(isoburn), "/Q", drive.device, str(iso_path)])
 
         print("No supported Windows ISO burner was found.", file=sys.stderr)
         print("Install ImgBurn and make sure ImgBurn.exe is in PATH, or use Windows' built-in Disc Image Burner manually.", file=sys.stderr)
