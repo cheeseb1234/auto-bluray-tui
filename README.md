@@ -107,6 +107,20 @@ Detailed workflow notes live here:
 
 ## Credits / upstream heritage
 
-Auto Blu-ray TUI includes and builds on the archived HD Cook Book / java.net source tree. HD Cook Book remains the BD-J/GRIN foundation and reference implementation; this project adds the automated PowerPoint-to-Blu-ray TUI workflow, media preparation, ISO assembly, and burn automation around it.
+Auto Blu-ray TUI includes and builds on the archived HD Cook Book / java.## Intended use
+
+This project is for authoring Blu-ray discs from your own videos, personal projects,
+home movies, training materials, or other content you have the right to use.
+
+It does not decrypt commercial Blu-ray discs, remove copy protection, or assist with
+unauthorized copying of copyrighted material.net source tree. HD Cook Book remains the BD-J/GRIN foundation and reference implementation; this project adds the automated PowerPoint-to-Blu-ray TUI workflow, media preparation, ISO assembly, and burn automation around it.
+
+## Intended use
+
+This project is for authoring Blu-ray discs from your own videos, personal projects,
+home movies, training materials, or other content you have the right to use.
+
+It does not decrypt commercial Blu-ray discs, remove copy protection, or assist with
+unauthorized copying of copyrighted material.
 
 Find this useful? Feel free to donate https://buymeacoffee.com/rarecore
