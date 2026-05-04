@@ -21,11 +21,16 @@ jobs:
             executable: auto-bluray-tui.exe
             data-separator: ";"
             archive: auto-bluray-tui-windows.zip
-          - name: macos
+          - name: macos-arm64
             os: macos-latest
             executable: auto-bluray-tui
             data-separator: ":"
-            archive: auto-bluray-tui-macos.zip
+            archive: auto-bluray-tui-macos-silicon.zip
+          - name: macos-intel
+            os: macos-latest
+            executable: auto-bluray-tui
+            data-separator: ":"
+            archive: auto-bluray-tui-macos-intel.zip
           - name: linux
             os: ubuntu-latest
             executable: auto-bluray-tui
@@ -49,8 +54,10 @@ jobs:
           if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
         shell: bash
 
-      - name: Build standalone executable with PyInstaller
-        run: >-
+      - name: Build standalone executable with PyInstaller (ARM64)
+        if: matrix.name == 'macos-arm64'
+        run: |
+          # Build ARM64 (Apple Silicon) binary
           pyinstaller
           --noconfirm
           --clean
@@ -74,17 +81,51 @@ jobs:
           start.py
         shell: bash
 
+      - name: Build standalone executable with PyInstaller (Intel)
+        if: matrix.name == 'macos-intel'
+        run: |
+          # Build Intel (x86_64) binary using Rosetta
+          arch -x86_64 pyinstaller
+          --noconfirm
+          --clean
+          --onedir
+          --name auto-bluray-tui
+          --paths tools
+          --hidden-import bluray_tui_monitor
+          --add-data "lib${{ matrix.data-separator }}lib"
+          --add-data "tools${{ matrix.data-separator }}tools"
+          --add-data "scripts${{ matrix.data-separator }}scripts"
+          --add-data "xlets${{ matrix.data-separator }}xlets"
+          --add-data "bin${{ matrix.data-separator }}bin"
+          --add-data "DiscCreationTools${{ matrix.data-separator }}DiscCreationTools"
+          --add-data "docs${{ matrix.data-separator }}docs"
+          --add-data "README.md${{ matrix.data-separator }}."
+          --add-data "README_RELEASE.md${{ matrix.data-separator }}."
+          --add-data "requirements.txt${{ matrix.data-separator }}."
+          --add-data "LICENSE${{ matrix.data-separator }}."
+          --add-data "vars.properties${{ matrix.data-separator }}."
+          --add-data "user.vars.properties.example${{ matrix.data-separator }}."
+          start.py
+        shell: bash
+
       - name: Rename Windows executable
-        if: runner.os == 'Windows'
+        if: matrix.name != 'macos-arm64' && matrix.name != 'macos-intel'
         run: |
           if [ -f dist/auto-bluray-tui/auto-bluray-tui.exe ]; then
             mv dist/auto-bluray-tui/auto-bluray-tui.exe dist/auto-bluray-tui/${{ matrix.executable }}
           fi
         shell: bash
 
-      - name: Smoke test built executable
+      - name: Smoke test built executable (ARM64)
+        if: matrix.name == 'macos-arm64'
         run: |
-          dist/auto-bluray-tui/${{ matrix.executable }} --help
+          dist/auto-bluray-tui/auto-bluray-tui --help
+        shell: bash
+
+      - name: Smoke test built executable (Intel)
+        if: matrix.name == 'macos-intel'
+        run: |
+          dist/auto-bluray-tui/auto-bluray-tui --help
         shell: bash
 
       - name: Stage release archive
@@ -96,6 +137,7 @@ jobs:
 
           archive_name = "${{ matrix.archive }}"
           executable = "${{ matrix.executable }}"
+          arch = "arm64" if matrix.name == "macos-arm64" else "x86_64"
           dist_dir = Path("dist") / "auto-bluray-tui"
           stage = Path("release-stage") / "auto-bluray-tui-${{ matrix.name }}"
 
@@ -142,12 +184,14 @@ jobs:
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
+        if: matrix.name != 'linux'
         with:
           name: ${{ matrix.archive }}
           path: ${{ matrix.archive }}
           if-no-files-found: error
 
       - name: Upload archive to GitHub Release
+        if: matrix.name != 'linux'
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.archive }}
