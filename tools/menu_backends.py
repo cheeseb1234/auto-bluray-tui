@@ -590,6 +590,109 @@ def compile_hdmv_ig_tables(ig_plan: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def compile_hdmv_ig_assembly(ig_tables: dict[str, Any]) -> dict[str, Any]:
+    """Build a serializer-shaped IG assembly export with reference validation."""
+    object_table = list(ig_tables.get('object_table') or [])
+    page_table = list(ig_tables.get('page_table') or [])
+    button_table = list(ig_tables.get('button_table') or [])
+    bog_table = list(ig_tables.get('bog_table') or [])
+
+    object_indexes = {row.get('object_index') for row in object_table}
+    page_indexes = {row.get('page_index') for row in page_table}
+    button_keys = {(row.get('page_index'), row.get('button_index')) for row in button_table}
+    errors: list[dict[str, Any]] = []
+
+    def require_object(ref: int | None, *, context: str, allow_none: bool = False):
+        if ref is None:
+            if not allow_none:
+                errors.append({'type': 'missing_object_ref', 'context': context})
+            return
+        if ref not in object_indexes:
+            errors.append({'type': 'invalid_object_ref', 'context': context, 'object_index': ref})
+
+    page_assemblies = []
+    for page in page_table:
+        page_index = int(page.get('page_index') or 0)
+        require_object(page.get('background_object_index'), context=f'page[{page_index}].background')
+        page_buttons = [row for row in button_table if row.get('page_index') == page_index]
+        page_bogs = [row for row in bog_table if row.get('page_index') == page_index]
+
+        default_button_index = page.get('default_selected_button_index')
+        if default_button_index is not None and (page_index, default_button_index) not in button_keys:
+            errors.append({'type': 'invalid_default_button', 'page_index': page_index, 'button_index': default_button_index})
+
+        button_assemblies = []
+        for button in page_buttons:
+            button_index = int(button.get('button_index') or 0)
+            for state_name in ('normal_object_index', 'selected_object_index', 'activated_object_index'):
+                require_object(button.get(state_name), context=f'page[{page_index}].button[{button_index}].{state_name}', allow_none=(state_name != 'normal_object_index'))
+
+            neighbors = button.get('neighbors') or {}
+            neighbor_indexes = {}
+            by_id = {row.get('id'): row.get('button_index') for row in page_buttons}
+            for direction, target_id in neighbors.items():
+                if target_id not in by_id:
+                    errors.append({'type': 'invalid_neighbor', 'page_index': page_index, 'button_index': button_index, 'direction': direction, 'target_id': target_id})
+                    continue
+                neighbor_indexes[direction] = by_id[target_id]
+
+            button_assemblies.append({
+                'button_index': button_index,
+                'select_value': int(button.get('select_value') or 0),
+                'bog_id': button.get('bog_id'),
+                'object_indexes': {
+                    'normal': button.get('normal_object_index'),
+                    'selected': button.get('selected_object_index'),
+                    'activated': button.get('activated_object_index'),
+                },
+                'neighbor_button_indexes': neighbor_indexes,
+                'action': button.get('action') or {},
+            })
+
+        bog_assemblies = []
+        for bog in page_bogs:
+            button_indexes = [int(idx) for idx in bog.get('button_indexes') or []]
+            for idx in button_indexes:
+                if (page_index, idx) not in button_keys:
+                    errors.append({'type': 'invalid_bog_button', 'page_index': page_index, 'bog_index': bog.get('bog_index'), 'button_index': idx})
+            bog_assemblies.append({
+                'bog_index': int(bog.get('bog_index') or 0),
+                'button_indexes': button_indexes,
+                'auto_action': bool(bog.get('auto_action')),
+            })
+
+        page_assemblies.append({
+            'page_index': page_index,
+            'page_id': int(page.get('page_id') or 0),
+            'background_object_index': page.get('background_object_index'),
+            'default_selected_button_index': default_button_index,
+            'buttons': button_assemblies,
+            'bogs': bog_assemblies,
+        })
+
+    entry_menu = ig_tables.get('entry_menu')
+    entry_page_index = None
+    for page in page_table:
+        if page.get('menu_id') == entry_menu:
+            entry_page_index = page.get('page_index')
+            break
+    if entry_menu is not None and entry_page_index is None:
+        errors.append({'type': 'invalid_entry_menu', 'entry_menu': entry_menu})
+
+    return {
+        'schema_version': 'auto-bluray-hdmv-ig-assembly-v1',
+        'entry_menu': entry_menu,
+        'entry_page_index': entry_page_index,
+        'object_count': len(object_table),
+        'page_count': len(page_table),
+        'pages': page_assemblies,
+        'validation': {
+            'ok': not errors,
+            'errors': errors,
+        },
+    }
+
+
 def _clamp(value: int, low: int, high: int) -> int:
     return max(low, min(high, value))
 
@@ -806,12 +909,15 @@ class HdmvMenuBackend(MenuBackend):
         (package_dir / 'hdmv-lite-ig-plan.json').write_text(json.dumps(ig_plan, indent=2) + '\n', encoding='utf-8')
         ig_tables = compile_hdmv_ig_tables(ig_plan)
         (package_dir / 'hdmv-lite-ig-tables.json').write_text(json.dumps(ig_tables, indent=2) + '\n', encoding='utf-8')
+        ig_assembly = compile_hdmv_ig_assembly(ig_tables)
+        (package_dir / 'hdmv-lite-ig-assembly.json').write_text(json.dumps(ig_assembly, indent=2) + '\n', encoding='utf-8')
         (package_dir / 'README.md').write_text(
             '# HDMV-Lite menu package\n\n'
             'Generated by the first HDMV-Lite backend milestone.\n\n'
             '- static menu/page/button/action IR\n'
             '- lower-level IG planning IR for pages/BOGs/buttons/objects\n'
             '- normalized IG tables with stable numeric indexes for future binary encoding\n'
+            '- serializer-shaped IG assembly export with reference validation\n'
             '- generated selected/activated button-state bitmap overlays\n'
             '- no BD-J/JAR/BDJO payloads\n'
             '- Java-free index/MovieObject skeletons when DiscCreationTools are available\n\n'
@@ -835,6 +941,7 @@ class HdmvMenuBackend(MenuBackend):
             'hdmv_lite_model': str(package_dir / 'hdmv-lite-menu.json'),
             'hdmv_lite_ig_plan': str(package_dir / 'hdmv-lite-ig-plan.json'),
             'hdmv_lite_ig_tables': str(package_dir / 'hdmv-lite-ig-tables.json'),
+            'hdmv_lite_ig_assembly': str(package_dir / 'hdmv-lite-ig-assembly.json'),
             'index_xml': str(package_dir / 'index.xml'),
             'movieobject_xml': str(package_dir / 'MovieObject.xml'),
             'index_bdmv': str(bdmv / 'index.bdmv') if compiled_index else None,
