@@ -258,8 +258,8 @@ class MenuBackendCompatibilityTests(unittest.TestCase):
             'schema_version': 'auto-bluray-hdmv-ig-tables-v1',
             'entry_menu': 'missing',
             'object_table': [],
-            'page_table': [{'page_index': 0, 'page_id': 1, 'menu_id': 'slide1', 'title': 'Main', 'background_object_index': 9, 'default_selected_button_index': 0}],
-            'button_table': [{'page_index': 0, 'button_index': 0, 'id': 'Play', 'bog_id': 'bog0', 'select_value': 1, 'label': 'Play', 'hitbox_px': {}, 'neighbors': {'right': 'Missing'}, 'normal_object_index': 5, 'selected_object_index': None, 'activated_object_index': None, 'action': {}}],
+            'page_table': [{'page_index': 0, 'page_id': 999, 'menu_id': 'slide1', 'title': 'Main', 'background_object_index': 9, 'default_selected_button_index': 0}],
+            'button_table': [{'page_index': 0, 'button_index': 0, 'id': 'Play', 'bog_id': 'bog0', 'select_value': 0, 'label': 'Play', 'hitbox_px': {}, 'neighbors': {'right': 'Missing'}, 'normal_object_index': 5, 'selected_object_index': None, 'activated_object_index': None, 'action': {}}],
             'bog_table': [{'page_index': 0, 'bog_index': 0, 'id': 'bog0', 'button_indexes': [7], 'auto_action': False}],
         }
         assembly = compile_hdmv_ig_assembly(tables)
@@ -269,6 +269,8 @@ class MenuBackendCompatibilityTests(unittest.TestCase):
         self.assertIn('invalid_object_ref', error_types)
         self.assertIn('invalid_neighbor', error_types)
         self.assertIn('invalid_bog_button', error_types)
+        self.assertIn('page_id_out_of_range', error_types)
+        self.assertIn('select_value_out_of_range', error_types)
 
     def test_hdmv_ig_binary_scaffold_packs_deterministic_sections(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -313,6 +315,26 @@ class MenuBackendCompatibilityTests(unittest.TestCase):
                 'entry_page_index': 0,
                 'validation': {'ok': False, 'errors': [{'type': 'invalid_object_ref'}]},
                 'pages': [],
+            })
+
+    def test_hdmv_ig_binary_scaffold_rejects_bog_count_overflow(self):
+        with self.assertRaises(MenuBackendError):
+            pack_hdmv_ig_binary_scaffold({
+                'schema_version': 'auto-bluray-hdmv-ig-assembly-v1',
+                'entry_page_index': 0,
+                'object_count': 1,
+                'page_count': 1,
+                'action_count': 0,
+                'action_table': [],
+                'validation': {'ok': True, 'errors': []},
+                'pages': [{
+                    'page_index': 0,
+                    'page_id': 1,
+                    'background_object_index': 0,
+                    'default_selected_button_index': 0,
+                    'buttons': [],
+                    'bogs': [{'bog_index': 0, 'button_indexes': list(range(256)), 'auto_action': False}],
+                }],
             })
 
     def test_hdmv_backend_accepts_safe_menu_and_writes_java_free_package(self):

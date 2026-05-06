@@ -610,6 +610,13 @@ def compile_hdmv_ig_assembly(ig_tables: dict[str, Any]) -> dict[str, Any]:
         if ref not in object_indexes:
             errors.append({'type': 'invalid_object_ref', 'context': context, 'object_index': ref})
 
+    def require_range(value: int | None, *, min_value: int, max_value: int, error_type: str, context: str):
+        if value is None:
+            errors.append({'type': error_type, 'context': context, 'value': value, 'min': min_value, 'max': max_value})
+            return
+        if not (min_value <= int(value) <= max_value):
+            errors.append({'type': error_type, 'context': context, 'value': int(value), 'min': min_value, 'max': max_value})
+
     action_records: list[dict[str, Any]] = []
     action_index_by_key: dict[tuple[Any, ...], int] = {}
 
@@ -646,6 +653,7 @@ def compile_hdmv_ig_assembly(ig_tables: dict[str, Any]) -> dict[str, Any]:
     page_assemblies = []
     for page in page_table:
         page_index = int(page.get('page_index') or 0)
+        require_range(page.get('page_id'), min_value=0, max_value=0xFE, error_type='page_id_out_of_range', context=f'page[{page_index}].page_id')
         require_object(page.get('background_object_index'), context=f'page[{page_index}].background')
         page_buttons = [row for row in button_table if row.get('page_index') == page_index]
         page_bogs = [row for row in bog_table if row.get('page_index') == page_index]
@@ -657,6 +665,7 @@ def compile_hdmv_ig_assembly(ig_tables: dict[str, Any]) -> dict[str, Any]:
         button_assemblies = []
         for button in page_buttons:
             button_index = int(button.get('button_index') or 0)
+            require_range(button.get('select_value'), min_value=1, max_value=0xFFFF, error_type='select_value_out_of_range', context=f'page[{page_index}].button[{button_index}].select_value')
             for state_name in ('normal_object_index', 'selected_object_index', 'activated_object_index'):
                 require_object(button.get(state_name), context=f'page[{page_index}].button[{button_index}].{state_name}', allow_none=(state_name != 'normal_object_index'))
 
@@ -686,6 +695,8 @@ def compile_hdmv_ig_assembly(ig_tables: dict[str, Any]) -> dict[str, Any]:
         bog_assemblies = []
         for bog in page_bogs:
             button_indexes = [int(idx) for idx in bog.get('button_indexes') or []]
+            if len(button_indexes) > 0xFF:
+                errors.append({'type': 'bog_button_count_out_of_range', 'page_index': page_index, 'bog_index': bog.get('bog_index'), 'count': len(button_indexes), 'max': 0xFF})
             for idx in button_indexes:
                 if (page_index, idx) not in button_keys:
                     errors.append({'type': 'invalid_bog_button', 'page_index': page_index, 'bog_index': bog.get('bog_index'), 'button_index': idx})
@@ -759,6 +770,13 @@ def pack_hdmv_ig_binary_scaffold(ig_assembly: dict[str, Any]) -> dict[str, Any]:
     pages = list(ig_assembly.get('pages') or [])
     actions = sorted(ig_assembly.get('action_table') or [], key=lambda row: int(row.get('action_index') or 0))
 
+    if len(pages) > 0xFFFF:
+        raise MenuBackendError('Cannot pack HDMV IG binary scaffold: too many pages for scaffold field widths.')
+    if int(ig_assembly.get('object_count') or 0) > 0xFFFF:
+        raise MenuBackendError('Cannot pack HDMV IG binary scaffold: too many objects for scaffold field widths.')
+    if len(actions) > 0xFFFF:
+        raise MenuBackendError('Cannot pack HDMV IG binary scaffold: too many actions for scaffold field widths.')
+
     header = bytearray()
     header.extend(b'IGSC')
     header.extend(_pack_u16(1))
@@ -814,6 +832,8 @@ def pack_hdmv_ig_binary_scaffold(ig_assembly: dict[str, Any]) -> dict[str, Any]:
         page_index = int(page.get('page_index') or 0)
         buttons = sorted(page.get('buttons') or [], key=lambda row: int(row.get('button_index') or 0))
         bogs = sorted(page.get('bogs') or [], key=lambda row: int(row.get('bog_index') or 0))
+        if len(buttons) > 0xFFFF or len(bogs) > 0xFFFF:
+            raise MenuBackendError(f'Cannot pack HDMV IG binary scaffold: page {page_index} exceeds scaffold count limits.')
         page_records.extend(_pack_u16(page_index))
         page_records.extend(_pack_u16(int(page.get('page_id') or 0)))
         page_records.extend(_pack_u16(int(page.get('background_object_index') or 0)))
@@ -838,6 +858,8 @@ def pack_hdmv_ig_binary_scaffold(ig_assembly: dict[str, Any]) -> dict[str, Any]:
 
         for bog in bogs:
             bog_buttons = [int(idx) for idx in bog.get('button_indexes') or []]
+            if len(bog_buttons) > 0xFF:
+                raise MenuBackendError(f'Cannot pack HDMV IG binary scaffold: BOG on page {page_index} exceeds scaffold button count limit.')
             bog_records.extend(_pack_u16(page_index))
             bog_records.extend(_pack_u16(int(bog.get('bog_index') or 0)))
             bog_records.extend(_pack_u8(1 if bog.get('auto_action') else 0))
