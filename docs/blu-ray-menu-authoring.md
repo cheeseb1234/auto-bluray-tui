@@ -101,11 +101,12 @@ The HDMV backend implements the first conservative HDMV-Lite scaffold milestone.
 - `hdmv-lite-ig-tables.json` normalized object/page/button/BOG tables with stable numeric indexes
 - `hdmv-lite-ig-assembly.json` serializer-shaped page/button/object assembly export with reference validation
 - `hdmv-lite-ig-binary-scaffold.json` deterministic byte-oriented section dump for future binary packing work
+- `movieobject-plan.json` sample-backed HDMV MovieObject command plan for title-launch objects
 
 The assembly/binary scaffold now also lifts button actions into an explicit action table/opcode plan so `play_title`, `go_to_menu`, `return_main_menu`, and `noop` stop living as opaque JSON blobs and can evolve toward real HDMV command encoding.
 - generated `assets/*_selected.png` / `*_activated.png` button-state overlay bitmaps for HDMV planning
 - copied static background assets
-- `index.xml` and `MovieObject.xml` skeletons
+- `index.xml` and `MovieObject.xml` generated from the HDMV-Lite package model; title-launch MovieObject commands now use sample-backed `JumpTitle` words instead of all-zero placeholders
 - `index.bdmv` / `MovieObject.bdmv` when the bundled DiscCreationTools converters are available
 
 This is still not a full Interactive Graphics compiler and not a functional final HDMV menu backend. The generated package proves the static menu model, hitboxes, and simple actions are representable; final IG stream and HDMV command bytecode compilation are the next milestone.

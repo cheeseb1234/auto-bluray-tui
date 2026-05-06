@@ -19,6 +19,7 @@ from menu_backends import (
     MenuBackendError,
     analyze_menu_compatibility,
     compile_hdmv_ig_assembly,
+    compile_hdmv_movieobject_plan,
     pack_hdmv_ig_binary_scaffold,
     compile_hdmv_ig_tables,
     build_hdmv_ig_plan,
@@ -337,6 +338,24 @@ class MenuBackendCompatibilityTests(unittest.TestCase):
                 }],
             })
 
+    def test_hdmv_movieobject_plan_emits_sample_backed_jump_title_commands(self):
+        plan = compile_hdmv_movieobject_plan({
+            'titles': [
+                {'title_number': 1, 'playlist_id': '00001', 'video_file': 'Movie1.mkv'},
+                {'title_number': 2, 'playlist_id': '00002', 'video_file': 'Movie2.mkv'},
+            ]
+        })
+        self.assertEqual(plan['schema_version'], 'auto-bluray-hdmv-movieobject-plan-v1')
+        self.assertEqual(plan['command_source'], 'local-hdcookbook-sample')
+        self.assertEqual(plan['objects'][0]['kind'], 'first_playback')
+        self.assertEqual(plan['objects'][0]['commands'][0], '21810000 00000001 00000000')
+        self.assertEqual(plan['objects'][1]['kind'], 'top_menu')
+        self.assertEqual(plan['objects'][1]['commands'][0], '21810000 00000001 00000000')
+        self.assertEqual(plan['objects'][2]['mobj_id'], 2)
+        self.assertEqual(plan['objects'][2]['commands'][0], '21810000 00000001 00000000')
+        self.assertEqual(plan['objects'][3]['mobj_id'], 3)
+        self.assertEqual(plan['objects'][3]['commands'][0], '21810000 00000002 00000000')
+
     def test_hdmv_backend_accepts_safe_menu_and_writes_java_free_package(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -359,6 +378,7 @@ class MenuBackendCompatibilityTests(unittest.TestCase):
             self.assertTrue((package / 'hdmv-lite-ig-binary-scaffold.json').exists())
             self.assertTrue((package / 'index.xml').exists())
             self.assertTrue((package / 'MovieObject.xml').exists())
+            self.assertTrue((package / 'movieobject-plan.json').exists())
             self.assertTrue((package / 'assets' / 'slide1_Play_selected.png').exists())
             self.assertTrue((package / 'assets' / 'slide1_Play_activated.png').exists())
             self.assertFalse((tmp_path / 'disc-root' / 'BDMV' / 'JAR').exists())
@@ -368,11 +388,15 @@ class MenuBackendCompatibilityTests(unittest.TestCase):
             ig_tables = json.loads((package / 'hdmv-lite-ig-tables.json').read_text())
             ig_assembly = json.loads((package / 'hdmv-lite-ig-assembly.json').read_text())
             ig_binary = json.loads((package / 'hdmv-lite-ig-binary-scaffold.json').read_text())
+            movieobject_plan = json.loads((package / 'movieobject-plan.json').read_text())
+            movieobject_xml = (package / 'MovieObject.xml').read_text()
+            index_xml = (package / 'index.xml').read_text()
             self.assertEqual(data['schema_version'], 'auto-bluray-hdmv-lite-v1')
             self.assertEqual(ig_plan['schema_version'], 'auto-bluray-hdmv-ig-plan-v1')
             self.assertEqual(ig_tables['schema_version'], 'auto-bluray-hdmv-ig-tables-v1')
             self.assertEqual(ig_assembly['schema_version'], 'auto-bluray-hdmv-ig-assembly-v1')
             self.assertEqual(ig_binary['schema_version'], 'auto-bluray-hdmv-ig-binary-scaffold-v1')
+            self.assertEqual(movieobject_plan['schema_version'], 'auto-bluray-hdmv-movieobject-plan-v1')
             self.assertEqual(data['titles'][0]['playlist_id'], '00001')
             self.assertEqual(data['menus'][0]['buttons'][0]['state_assets']['selected'], 'assets/slide1_Play_selected.png')
             self.assertEqual(ig_plan['pages'][0]['buttons'][0]['visual_state_refs']['selected'], 'slide1:Play:selected')
@@ -380,6 +404,11 @@ class MenuBackendCompatibilityTests(unittest.TestCase):
             self.assertTrue(any(row['id'] == 'slide1:Play:selected' for row in ig_tables['object_table']))
             self.assertTrue(ig_assembly['validation']['ok'])
             self.assertEqual(ig_binary['sections'][0]['name'], 'header')
+            self.assertIn('21810000 00000001 00000000', movieobject_xml)
+            self.assertIn('<HDMVName>0x1</HDMVName>', index_xml)
+            self.assertIn('<playbackType>HDMVPlayback_MOVIE</playbackType>', index_xml)
+            self.assertEqual(movieobject_plan['objects'][1]['kind'], 'top_menu')
+            self.assertEqual(movieobject_plan['objects'][2]['kind'], 'jump_title')
 
     def test_hdmv_backend_reports_bdj_only_reasons(self):
         with tempfile.TemporaryDirectory() as tmp:

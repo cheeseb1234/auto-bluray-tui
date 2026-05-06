@@ -966,7 +966,7 @@ def generate_hdmv_button_state_assets(hdmv_model: dict[str, Any], package_dir: P
 def _write_hdmv_lite_index_xml(path: Path, title_count: int):
     title_entries = []
     for i in range(title_count):
-        mobj_id = i + 1
+        mobj_id = i + 2
         title_entries.append(f"""            <title>
                 <indexObject xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:type=\"HDMVIndexObject\">
                     <HDMVName>0x{mobj_id:x}</HDMVName>
@@ -982,12 +982,12 @@ def _write_hdmv_lite_index_xml(path: Path, title_count: int):
         <firstPlayback>
             <firstPlaybackObject xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:type=\"HDMVIndexObject\">
                 <HDMVName>0x0</HDMVName>
-                <playbackType>HDMVPlayback_INTERACTIVE</playbackType>
+                <playbackType>HDMVPlayback_MOVIE</playbackType>
             </firstPlaybackObject>
         </firstPlayback>
         <topMenu>
             <topMenuObject xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:type=\"HDMVIndexObject\">
-                <HDMVName>0x0</HDMVName>
+                <HDMVName>0x1</HDMVName>
                 <playbackType>HDMVPlayback_INTERACTIVE</playbackType>
             </topMenuObject>
         </topMenu>
@@ -1003,16 +1003,67 @@ def _write_hdmv_lite_index_xml(path: Path, title_count: int):
 """, encoding='utf-8')
 
 
-def _write_hdmv_lite_movieobject_xml(path: Path, hdmv_model: dict[str, Any]):
+def compile_hdmv_movieobject_plan(hdmv_model: dict[str, Any]) -> dict[str, Any]:
+    """Build a conservative MovieObject command plan from sample-backed JumpTitle commands.
+
+    Local HD Cook Book samples use `21810000 <title> 00000000` for Jump Title.
+    We reuse that public/sample-backed pattern for title-launch objects while
+    keeping menu-page command compilation explicitly out of scope for now.
+    """
+    titles = list(hdmv_model.get('titles') or [])
+    jump_title_opcode = '21810000'
     objects = []
-    object_count = 1 + len(hdmv_model.get('titles') or [])
-    for mobj_id in range(object_count):
-        note = 'Top menu IG program placeholder' if mobj_id == 0 else f'Title {mobj_id} playback command placeholder'
-        objects.append(f"""        <!-- {escape(note)}. The HDMV-Lite first milestone emits IR and static navigation metadata; IG/action bytecode compilation follows. -->
-        <movieObject mobjId=\"{mobj_id}\">
-            <navigationCommands commandId=\"0\">
-                <command>00000000 00000000 00000000</command>
-            </navigationCommands>
+
+    default_title_number = int((titles[0] or {}).get('title_number') or 1) if titles else 1
+    default_command = f'{jump_title_opcode} {default_title_number:08x} 00000000'
+    objects.append({
+        'mobj_id': 0,
+        'kind': 'first_playback',
+        'target_title_number': default_title_number,
+        'commands': [default_command],
+        'notes': 'Sample-backed JumpTitle fallback until real menu/page command compilation exists.',
+    })
+    objects.append({
+        'mobj_id': 1,
+        'kind': 'top_menu',
+        'target_title_number': default_title_number,
+        'commands': [default_command],
+        'notes': 'Sample-backed Top Menu fallback until real menu/page command compilation exists.',
+    })
+
+    for title in titles:
+        title_number = int(title.get('title_number') or 0)
+        mobj_id = title_number + 1
+        command = f'{jump_title_opcode} {title_number:08x} 00000000'
+        objects.append({
+            'mobj_id': mobj_id,
+            'kind': 'jump_title',
+            'target_title_number': title_number,
+            'playlist_id': title.get('playlist_id'),
+            'video_file': title.get('video_file'),
+            'commands': [command],
+            'notes': 'Sample-backed JumpTitle command derived from local HD Cook Book MovieObject.xml.',
+        })
+
+    return {
+        'schema_version': 'auto-bluray-hdmv-movieobject-plan-v1',
+        'command_source': 'local-hdcookbook-sample',
+        'objects': objects,
+    }
+
+
+def _write_hdmv_lite_movieobject_xml(path: Path, hdmv_model: dict[str, Any]):
+    plan = compile_hdmv_movieobject_plan(hdmv_model)
+    objects = []
+    for row in plan['objects']:
+        note = row.get('notes') or 'HDMV-Lite command plan row'
+        commands_xml = '\n'.join(
+            f'            <navigationCommands commandId="{idx}">\n                <command>{cmd}</command>\n            </navigationCommands>'
+            for idx, cmd in enumerate(row.get('commands') or [])
+        )
+        objects.append(f"""        <!-- {escape(note)} -->
+        <movieObject mobjId=\"{int(row.get('mobj_id') or 0)}\">
+{commands_xml}
             <terminalInfo>
                 <menuCallMask>false</menuCallMask>
                 <resumeIntentionFlag>false</resumeIntentionFlag>
@@ -1030,6 +1081,10 @@ def _write_hdmv_lite_movieobject_xml(path: Path, hdmv_model: dict[str, Any]):
     <paddingsN2>0</paddingsN2>
 </movieObjectFile>
 """, encoding='utf-8')
+
+
+def _write_hdmv_movieobject_plan_json(path: Path, hdmv_model: dict[str, Any]):
+    path.write_text(json.dumps(compile_hdmv_movieobject_plan(hdmv_model), indent=2) + '\n', encoding='utf-8')
 
 
 def _try_compile_hdmv_xml(root: Path, xml_path: Path, binary_path: Path) -> bool:
@@ -1126,11 +1181,12 @@ class HdmvMenuBackend(MenuBackend):
             '- deterministic byte-oriented IG binary scaffold sections\n'
             '- generated selected/activated button-state bitmap overlays\n'
             '- no BD-J/JAR/BDJO payloads\n'
-            '- Java-free index/MovieObject skeletons when DiscCreationTools are available\n\n'
+            '- sample-backed MovieObject JumpTitle command plan plus compiled XML/binary when available\n\n'
             'Interactive Graphics stream and final HDMV command bytecode compilation are the next milestone.\n',
             encoding='utf-8',
         )
         _write_hdmv_lite_index_xml(package_dir / 'index.xml', len(hdmv_model.get('titles') or []))
+        _write_hdmv_movieobject_plan_json(package_dir / 'movieobject-plan.json', hdmv_model)
         _write_hdmv_lite_movieobject_xml(package_dir / 'MovieObject.xml', hdmv_model)
         compiled_index = _try_compile_hdmv_xml(root, package_dir / 'index.xml', bdmv / 'index.bdmv')
         compiled_mobj = _try_compile_hdmv_xml(root, package_dir / 'MovieObject.xml', bdmv / 'MovieObject.bdmv')
@@ -1151,6 +1207,7 @@ class HdmvMenuBackend(MenuBackend):
             'hdmv_lite_ig_binary_scaffold': str(package_dir / 'hdmv-lite-ig-binary-scaffold.json'),
             'index_xml': str(package_dir / 'index.xml'),
             'movieobject_xml': str(package_dir / 'MovieObject.xml'),
+            'movieobject_plan': str(package_dir / 'movieobject-plan.json'),
             'index_bdmv': str(bdmv / 'index.bdmv') if compiled_index else None,
             'movieobject_bdmv': str(bdmv / 'MovieObject.bdmv') if compiled_mobj else None,
             'java_payload': False,
