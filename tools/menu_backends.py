@@ -610,6 +610,39 @@ def compile_hdmv_ig_assembly(ig_tables: dict[str, Any]) -> dict[str, Any]:
         if ref not in object_indexes:
             errors.append({'type': 'invalid_object_ref', 'context': context, 'object_index': ref})
 
+    action_records: list[dict[str, Any]] = []
+    action_index_by_key: dict[tuple[Any, ...], int] = {}
+
+    def intern_action(action: dict[str, Any]) -> int:
+        action_type = str(action.get('type') or 'noop')
+        key = (
+            action_type,
+            action.get('playlist_id'),
+            action.get('title_number'),
+            action.get('target_menu'),
+            action.get('builtin'),
+        )
+        if key in action_index_by_key:
+            return action_index_by_key[key]
+        opcode_map = {
+            'noop': 'NOP',
+            'play_title': 'JUMP_TITLE',
+            'go_to_menu': 'SET_BUTTON_PAGE',
+            'return_main_menu': 'SET_BUTTON_PAGE',
+        }
+        record = {
+            'action_index': len(action_records),
+            'type': action_type,
+            'opcode': opcode_map.get(action_type, 'UNSUPPORTED'),
+            'playlist_id': action.get('playlist_id'),
+            'title_number': action.get('title_number'),
+            'target_menu': action.get('target_menu'),
+            'builtin': action.get('builtin'),
+        }
+        action_index_by_key[key] = record['action_index']
+        action_records.append(record)
+        return record['action_index']
+
     page_assemblies = []
     for page in page_table:
         page_index = int(page.get('page_index') or 0)
@@ -640,6 +673,7 @@ def compile_hdmv_ig_assembly(ig_tables: dict[str, Any]) -> dict[str, Any]:
                 'button_index': button_index,
                 'select_value': int(button.get('select_value') or 0),
                 'bog_id': button.get('bog_id'),
+                'action_index': intern_action(button.get('action') or {}),
                 'object_indexes': {
                     'normal': button.get('normal_object_index'),
                     'selected': button.get('selected_object_index'),
@@ -685,6 +719,8 @@ def compile_hdmv_ig_assembly(ig_tables: dict[str, Any]) -> dict[str, Any]:
         'entry_page_index': entry_page_index,
         'object_count': len(object_table),
         'page_count': len(page_table),
+        'action_count': len(action_records),
+        'action_table': action_records,
         'pages': page_assemblies,
         'validation': {
             'ok': not errors,
@@ -721,6 +757,7 @@ def pack_hdmv_ig_binary_scaffold(ig_assembly: dict[str, Any]) -> dict[str, Any]:
         raise MenuBackendError('Cannot pack HDMV IG binary scaffold: assembly validation failed.')
 
     pages = list(ig_assembly.get('pages') or [])
+    actions = sorted(ig_assembly.get('action_table') or [], key=lambda row: int(row.get('action_index') or 0))
 
     header = bytearray()
     header.extend(b'IGSC')
@@ -728,10 +765,50 @@ def pack_hdmv_ig_binary_scaffold(ig_assembly: dict[str, Any]) -> dict[str, Any]:
     header.extend(_pack_u16(int(ig_assembly.get('entry_page_index') or 0)))
     header.extend(_pack_u16(int(ig_assembly.get('page_count') or len(pages))))
     header.extend(_pack_u16(int(ig_assembly.get('object_count') or 0)))
+    header.extend(_pack_u16(int(ig_assembly.get('action_count') or len(actions))))
 
     page_records = bytearray()
     button_records = bytearray()
     bog_records = bytearray()
+    action_records = bytearray()
+
+    opcode_map = {
+        'NOP': 0,
+        'JUMP_TITLE': 1,
+        'SET_BUTTON_PAGE': 2,
+        'UNSUPPORTED': 255,
+    }
+
+    menu_to_page_index = {
+        page.get('page_id'): page.get('page_index') for page in pages
+    }
+    menu_name_to_page_index = {
+        # populated conservatively from assembly pages if menu_id is later added here
+    }
+
+    for action in actions:
+        action_records.extend(_pack_u16(int(action.get('action_index') or 0)))
+        action_records.extend(_pack_u8(opcode_map.get(action.get('opcode'), 255)))
+        action_records.extend(_pack_u8(0))
+        action_records.extend(_pack_u16(int(action.get('title_number') or 0)))
+        playlist_num = 0
+        playlist_id = action.get('playlist_id')
+        if playlist_id not in (None, ''):
+            try:
+                playlist_num = int(str(playlist_id))
+            except ValueError:
+                playlist_num = 0
+        action_records.extend(_pack_u16(playlist_num))
+        target_menu = action.get('target_menu')
+        target_page_index = None
+        if target_menu is not None:
+            target_page_index = menu_name_to_page_index.get(target_menu)
+            if target_page_index is None and isinstance(target_menu, str) and target_menu.startswith('slide'):
+                try:
+                    target_page_index = int(target_menu.replace('slide', '')) - 1
+                except ValueError:
+                    target_page_index = None
+        action_records.extend(_pack_u16(_pack_optional_u16(target_page_index)))
 
     for page in sorted(pages, key=lambda row: int(row.get('page_index') or 0)):
         page_index = int(page.get('page_index') or 0)
@@ -757,11 +834,7 @@ def pack_hdmv_ig_binary_scaffold(ig_assembly: dict[str, Any]) -> dict[str, Any]:
             button_records.extend(_pack_u16(int(object_indexes.get('normal') or 0)))
             button_records.extend(_pack_u16(_pack_optional_u16(object_indexes.get('selected'))))
             button_records.extend(_pack_u16(_pack_optional_u16(object_indexes.get('activated'))))
-            action = button.get('action') or {}
-            action_type = str(action.get('type') or 'noop')[:31]
-            action_type_bytes = action_type.encode('utf-8')
-            button_records.extend(_pack_u8(len(action_type_bytes)))
-            button_records.extend(action_type_bytes)
+            button_records.extend(_pack_u16(int(button.get('action_index') or 0)))
 
         for bog in bogs:
             bog_buttons = [int(idx) for idx in bog.get('button_indexes') or []]
@@ -779,6 +852,7 @@ def pack_hdmv_ig_binary_scaffold(ig_assembly: dict[str, Any]) -> dict[str, Any]:
         ('pages', bytes(page_records)),
         ('buttons', bytes(button_records)),
         ('bogs', bytes(bog_records)),
+        ('actions', bytes(action_records)),
     ):
         sections.append({
             'name': name,

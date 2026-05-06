@@ -101,6 +101,8 @@ The HDMV backend implements the first conservative HDMV-Lite scaffold milestone.
 - `hdmv-lite-ig-tables.json` normalized object/page/button/BOG tables with stable numeric indexes
 - `hdmv-lite-ig-assembly.json` serializer-shaped page/button/object assembly export with reference validation
 - `hdmv-lite-ig-binary-scaffold.json` deterministic byte-oriented section dump for future binary packing work
+
+The assembly/binary scaffold now also lifts button actions into an explicit action table/opcode plan so `play_title`, `go_to_menu`, `return_main_menu`, and `noop` stop living as opaque JSON blobs and can evolve toward real HDMV command encoding.
 - generated `assets/*_selected.png` / `*_activated.png` button-state overlay bitmaps for HDMV planning
 - copied static background assets
 - `index.xml` and `MovieObject.xml` skeletons

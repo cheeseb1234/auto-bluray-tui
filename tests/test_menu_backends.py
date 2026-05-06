@@ -250,6 +250,8 @@ class MenuBackendCompatibilityTests(unittest.TestCase):
             self.assertTrue(assembly['validation']['ok'])
             self.assertEqual(assembly['entry_page_index'], 0)
             self.assertIn('right', assembly['pages'][0]['buttons'][0]['neighbor_button_indexes'])
+            self.assertGreaterEqual(assembly['action_count'], 2)
+            self.assertEqual(assembly['action_table'][0]['opcode'], 'JUMP_TITLE')
 
     def test_hdmv_ig_assembly_reports_invalid_refs(self):
         tables = {
@@ -299,9 +301,10 @@ class MenuBackendCompatibilityTests(unittest.TestCase):
             assembly = compile_hdmv_ig_assembly(tables)
             binary = pack_hdmv_ig_binary_scaffold(assembly)
             self.assertEqual(binary['schema_version'], 'auto-bluray-hdmv-ig-binary-scaffold-v1')
-            self.assertEqual([section['name'] for section in binary['sections']], ['header', 'pages', 'buttons', 'bogs'])
+            self.assertEqual([section['name'] for section in binary['sections']], ['header', 'pages', 'buttons', 'bogs', 'actions'])
             self.assertEqual(binary['sections'][0]['hex'][:8], '49475343')
             self.assertGreater(binary['total_size'], 0)
+            self.assertGreater(binary['sections'][-1]['size'], 0)
 
     def test_hdmv_ig_binary_scaffold_rejects_invalid_assembly(self):
         with self.assertRaises(MenuBackendError):
