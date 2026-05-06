@@ -18,6 +18,7 @@ from menu_backends import (
     HdmvMenuBackend,
     MenuBackendError,
     analyze_menu_compatibility,
+    compile_hdmv_ig_tables,
     build_hdmv_ig_plan,
     build_hdmv_lite_model,
     select_backend,
@@ -199,6 +200,21 @@ class MenuBackendCompatibilityTests(unittest.TestCase):
             self.assertEqual(ig_plan['pages'][0]['buttons'][0]['visual_state_refs']['normal'], 'slide1:bg')
             self.assertIsNone(ig_plan['pages'][0]['buttons'][0]['visual_state_refs']['selected'])
 
+    def test_hdmv_ig_tables_compile_stable_numeric_indexes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            menu_dir = Path(tmp)
+            model = safe_model()
+            write_background_assets(menu_dir, model)
+            hdmv_model, errors = build_hdmv_lite_model(model, menu_dir)
+            self.assertEqual(errors, [])
+            ig_plan = build_hdmv_ig_plan(hdmv_model)
+            tables = compile_hdmv_ig_tables(ig_plan)
+            self.assertEqual(tables['schema_version'], 'auto-bluray-hdmv-ig-tables-v1')
+            self.assertEqual(tables['page_table'][0]['background_object_index'], 0)
+            self.assertEqual(tables['page_table'][0]['default_selected_button_index'], 0)
+            self.assertEqual(tables['button_table'][0]['normal_object_index'], 0)
+            self.assertEqual(tables['bog_table'][0]['button_indexes'], [0])
+
     def test_hdmv_backend_accepts_safe_menu_and_writes_java_free_package(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -216,6 +232,7 @@ class MenuBackendCompatibilityTests(unittest.TestCase):
             package = Path(result['hdmv_lite_package'])
             self.assertTrue((package / 'hdmv-lite-menu.json').exists())
             self.assertTrue((package / 'hdmv-lite-ig-plan.json').exists())
+            self.assertTrue((package / 'hdmv-lite-ig-tables.json').exists())
             self.assertTrue((package / 'index.xml').exists())
             self.assertTrue((package / 'MovieObject.xml').exists())
             self.assertTrue((package / 'assets' / 'slide1_Play_selected.png').exists())
@@ -224,12 +241,15 @@ class MenuBackendCompatibilityTests(unittest.TestCase):
             self.assertFalse((tmp_path / 'disc-root' / 'BDMV' / 'BDJO').exists())
             data = json.loads((package / 'hdmv-lite-menu.json').read_text())
             ig_plan = json.loads((package / 'hdmv-lite-ig-plan.json').read_text())
+            ig_tables = json.loads((package / 'hdmv-lite-ig-tables.json').read_text())
             self.assertEqual(data['schema_version'], 'auto-bluray-hdmv-lite-v1')
             self.assertEqual(ig_plan['schema_version'], 'auto-bluray-hdmv-ig-plan-v1')
+            self.assertEqual(ig_tables['schema_version'], 'auto-bluray-hdmv-ig-tables-v1')
             self.assertEqual(data['titles'][0]['playlist_id'], '00001')
             self.assertEqual(data['menus'][0]['buttons'][0]['state_assets']['selected'], 'assets/slide1_Play_selected.png')
             self.assertEqual(ig_plan['pages'][0]['buttons'][0]['visual_state_refs']['selected'], 'slide1:Play:selected')
             self.assertTrue(any(obj['id'] == 'slide1:Play:selected' for obj in ig_plan['objects']))
+            self.assertTrue(any(row['id'] == 'slide1:Play:selected' for row in ig_tables['object_table']))
 
     def test_hdmv_backend_reports_bdj_only_reasons(self):
         with tempfile.TemporaryDirectory() as tmp:
