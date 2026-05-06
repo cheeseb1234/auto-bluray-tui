@@ -97,6 +97,7 @@ The TUI persists the same setting in `build/bluray-media/encode-options.json`; p
 The HDMV backend implements the first conservative HDMV-Lite scaffold milestone. It accepts HDMV-safe neutral menu models and emits a Java-free HDMV-Lite authoring package under `build/final-bluray/hdmv-lite/` containing:
 
 - `hdmv-lite-menu.json` static menu/page/button/action IR
+- `hdmv-lite-ig-plan.json` lower-level page/BOG/button/object planning IR for the future IG compiler
 - copied static background assets
 - `index.xml` and `MovieObject.xml` skeletons
 - `index.bdmv` / `MovieObject.bdmv` when the bundled DiscCreationTools converters are available
