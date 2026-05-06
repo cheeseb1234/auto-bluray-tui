@@ -693,6 +693,113 @@ def compile_hdmv_ig_assembly(ig_tables: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _pack_u8(value: int) -> bytes:
+    return int(value).to_bytes(1, 'big', signed=False)
+
+
+def _pack_u16(value: int) -> bytes:
+    return int(value).to_bytes(2, 'big', signed=False)
+
+
+def _pack_u32(value: int) -> bytes:
+    return int(value).to_bytes(4, 'big', signed=False)
+
+
+def _pack_optional_u16(value: int | None) -> int:
+    return 0xFFFF if value is None else int(value)
+
+
+def pack_hdmv_ig_binary_scaffold(ig_assembly: dict[str, Any]) -> dict[str, Any]:
+    """Pack the validated IG assembly into deterministic byte-oriented scaffold sections.
+
+    This is intentionally not a final Blu-ray IG encoder. It provides stable
+    section payloads, offsets, and hashes so later binary work can focus on the
+    real HDMV field semantics instead of basic record ordering/packing.
+    """
+    validation = ig_assembly.get('validation') or {}
+    if not validation.get('ok'):
+        raise MenuBackendError('Cannot pack HDMV IG binary scaffold: assembly validation failed.')
+
+    pages = list(ig_assembly.get('pages') or [])
+
+    header = bytearray()
+    header.extend(b'IGSC')
+    header.extend(_pack_u16(1))
+    header.extend(_pack_u16(int(ig_assembly.get('entry_page_index') or 0)))
+    header.extend(_pack_u16(int(ig_assembly.get('page_count') or len(pages))))
+    header.extend(_pack_u16(int(ig_assembly.get('object_count') or 0)))
+
+    page_records = bytearray()
+    button_records = bytearray()
+    bog_records = bytearray()
+
+    for page in sorted(pages, key=lambda row: int(row.get('page_index') or 0)):
+        page_index = int(page.get('page_index') or 0)
+        buttons = sorted(page.get('buttons') or [], key=lambda row: int(row.get('button_index') or 0))
+        bogs = sorted(page.get('bogs') or [], key=lambda row: int(row.get('bog_index') or 0))
+        page_records.extend(_pack_u16(page_index))
+        page_records.extend(_pack_u16(int(page.get('page_id') or 0)))
+        page_records.extend(_pack_u16(int(page.get('background_object_index') or 0)))
+        page_records.extend(_pack_u16(_pack_optional_u16(page.get('default_selected_button_index'))))
+        page_records.extend(_pack_u16(len(buttons)))
+        page_records.extend(_pack_u16(len(bogs)))
+
+        for button in buttons:
+            neighbors = button.get('neighbor_button_indexes') or {}
+            object_indexes = button.get('object_indexes') or {}
+            button_records.extend(_pack_u16(page_index))
+            button_records.extend(_pack_u16(int(button.get('button_index') or 0)))
+            button_records.extend(_pack_u16(int(button.get('select_value') or 0)))
+            button_records.extend(_pack_u16(_pack_optional_u16(neighbors.get('left'))))
+            button_records.extend(_pack_u16(_pack_optional_u16(neighbors.get('right'))))
+            button_records.extend(_pack_u16(_pack_optional_u16(neighbors.get('up'))))
+            button_records.extend(_pack_u16(_pack_optional_u16(neighbors.get('down'))))
+            button_records.extend(_pack_u16(int(object_indexes.get('normal') or 0)))
+            button_records.extend(_pack_u16(_pack_optional_u16(object_indexes.get('selected'))))
+            button_records.extend(_pack_u16(_pack_optional_u16(object_indexes.get('activated'))))
+            action = button.get('action') or {}
+            action_type = str(action.get('type') or 'noop')[:31]
+            action_type_bytes = action_type.encode('utf-8')
+            button_records.extend(_pack_u8(len(action_type_bytes)))
+            button_records.extend(action_type_bytes)
+
+        for bog in bogs:
+            bog_buttons = [int(idx) for idx in bog.get('button_indexes') or []]
+            bog_records.extend(_pack_u16(page_index))
+            bog_records.extend(_pack_u16(int(bog.get('bog_index') or 0)))
+            bog_records.extend(_pack_u8(1 if bog.get('auto_action') else 0))
+            bog_records.extend(_pack_u8(len(bog_buttons)))
+            for idx in bog_buttons:
+                bog_records.extend(_pack_u16(idx))
+
+    sections = []
+    offset = 0
+    for name, payload in (
+        ('header', bytes(header)),
+        ('pages', bytes(page_records)),
+        ('buttons', bytes(button_records)),
+        ('bogs', bytes(bog_records)),
+    ):
+        sections.append({
+            'name': name,
+            'offset': offset,
+            'size': len(payload),
+            'hex': payload.hex(),
+        })
+        offset += len(payload)
+
+    return {
+        'schema_version': 'auto-bluray-hdmv-ig-binary-scaffold-v1',
+        'entry_page_index': ig_assembly.get('entry_page_index'),
+        'total_size': offset,
+        'sections': sections,
+        'notes': [
+            'Deterministic byte-oriented scaffold only; not a final HDMV IG bitstream.',
+            'Next milestone should replace these placeholder record layouts with real HDMV IG binary field semantics.',
+        ],
+    }
+
+
 def _clamp(value: int, low: int, high: int) -> int:
     return max(low, min(high, value))
 
@@ -911,6 +1018,8 @@ class HdmvMenuBackend(MenuBackend):
         (package_dir / 'hdmv-lite-ig-tables.json').write_text(json.dumps(ig_tables, indent=2) + '\n', encoding='utf-8')
         ig_assembly = compile_hdmv_ig_assembly(ig_tables)
         (package_dir / 'hdmv-lite-ig-assembly.json').write_text(json.dumps(ig_assembly, indent=2) + '\n', encoding='utf-8')
+        ig_binary = pack_hdmv_ig_binary_scaffold(ig_assembly)
+        (package_dir / 'hdmv-lite-ig-binary-scaffold.json').write_text(json.dumps(ig_binary, indent=2) + '\n', encoding='utf-8')
         (package_dir / 'README.md').write_text(
             '# HDMV-Lite menu package\n\n'
             'Generated by the first HDMV-Lite backend milestone.\n\n'
@@ -918,6 +1027,7 @@ class HdmvMenuBackend(MenuBackend):
             '- lower-level IG planning IR for pages/BOGs/buttons/objects\n'
             '- normalized IG tables with stable numeric indexes for future binary encoding\n'
             '- serializer-shaped IG assembly export with reference validation\n'
+            '- deterministic byte-oriented IG binary scaffold sections\n'
             '- generated selected/activated button-state bitmap overlays\n'
             '- no BD-J/JAR/BDJO payloads\n'
             '- Java-free index/MovieObject skeletons when DiscCreationTools are available\n\n'
@@ -942,6 +1052,7 @@ class HdmvMenuBackend(MenuBackend):
             'hdmv_lite_ig_plan': str(package_dir / 'hdmv-lite-ig-plan.json'),
             'hdmv_lite_ig_tables': str(package_dir / 'hdmv-lite-ig-tables.json'),
             'hdmv_lite_ig_assembly': str(package_dir / 'hdmv-lite-ig-assembly.json'),
+            'hdmv_lite_ig_binary_scaffold': str(package_dir / 'hdmv-lite-ig-binary-scaffold.json'),
             'index_xml': str(package_dir / 'index.xml'),
             'movieobject_xml': str(package_dir / 'MovieObject.xml'),
             'index_bdmv': str(bdmv / 'index.bdmv') if compiled_index else None,

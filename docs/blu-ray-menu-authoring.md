@@ -100,6 +100,7 @@ The HDMV backend implements the first conservative HDMV-Lite scaffold milestone.
 - `hdmv-lite-ig-plan.json` lower-level page/BOG/button/object planning IR for the future IG compiler
 - `hdmv-lite-ig-tables.json` normalized object/page/button/BOG tables with stable numeric indexes
 - `hdmv-lite-ig-assembly.json` serializer-shaped page/button/object assembly export with reference validation
+- `hdmv-lite-ig-binary-scaffold.json` deterministic byte-oriented section dump for future binary packing work
 - generated `assets/*_selected.png` / `*_activated.png` button-state overlay bitmaps for HDMV planning
 - copied static background assets
 - `index.xml` and `MovieObject.xml` skeletons

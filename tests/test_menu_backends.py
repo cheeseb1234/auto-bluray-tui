@@ -19,6 +19,7 @@ from menu_backends import (
     MenuBackendError,
     analyze_menu_compatibility,
     compile_hdmv_ig_assembly,
+    pack_hdmv_ig_binary_scaffold,
     compile_hdmv_ig_tables,
     build_hdmv_ig_plan,
     build_hdmv_lite_model,
@@ -267,6 +268,50 @@ class MenuBackendCompatibilityTests(unittest.TestCase):
         self.assertIn('invalid_neighbor', error_types)
         self.assertIn('invalid_bog_button', error_types)
 
+    def test_hdmv_ig_binary_scaffold_packs_deterministic_sections(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            menu_dir = Path(tmp)
+            model = safe_model()
+            write_background_assets(menu_dir, model)
+            hdmv_model, errors = build_hdmv_lite_model(model, menu_dir)
+            self.assertEqual(errors, [])
+            for menu in hdmv_model['menus']:
+                for button in menu['buttons']:
+                    button['object_refs'] = {
+                        'selected': f"{menu['id']}:{button['id']}:selected",
+                        'activated': f"{menu['id']}:{button['id']}:activated",
+                    }
+            ig_plan = build_hdmv_ig_plan(hdmv_model)
+            for menu in hdmv_model['menus']:
+                for button in menu['buttons']:
+                    for state_name in ('selected', 'activated'):
+                        ig_plan['objects'].append({
+                            'id': button['object_refs'][state_name],
+                            'kind': 'button_state_bitmap',
+                            'menu_id': menu['id'],
+                            'button_id': button['id'],
+                            'state': state_name,
+                            'file': f"assets/{menu['id']}_{button['id']}_{state_name}.png",
+                            'width': button['hitbox_px']['w'],
+                            'height': button['hitbox_px']['h'],
+                        })
+            tables = compile_hdmv_ig_tables(ig_plan)
+            assembly = compile_hdmv_ig_assembly(tables)
+            binary = pack_hdmv_ig_binary_scaffold(assembly)
+            self.assertEqual(binary['schema_version'], 'auto-bluray-hdmv-ig-binary-scaffold-v1')
+            self.assertEqual([section['name'] for section in binary['sections']], ['header', 'pages', 'buttons', 'bogs'])
+            self.assertEqual(binary['sections'][0]['hex'][:8], '49475343')
+            self.assertGreater(binary['total_size'], 0)
+
+    def test_hdmv_ig_binary_scaffold_rejects_invalid_assembly(self):
+        with self.assertRaises(MenuBackendError):
+            pack_hdmv_ig_binary_scaffold({
+                'schema_version': 'auto-bluray-hdmv-ig-assembly-v1',
+                'entry_page_index': 0,
+                'validation': {'ok': False, 'errors': [{'type': 'invalid_object_ref'}]},
+                'pages': [],
+            })
+
     def test_hdmv_backend_accepts_safe_menu_and_writes_java_free_package(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -286,6 +331,7 @@ class MenuBackendCompatibilityTests(unittest.TestCase):
             self.assertTrue((package / 'hdmv-lite-ig-plan.json').exists())
             self.assertTrue((package / 'hdmv-lite-ig-tables.json').exists())
             self.assertTrue((package / 'hdmv-lite-ig-assembly.json').exists())
+            self.assertTrue((package / 'hdmv-lite-ig-binary-scaffold.json').exists())
             self.assertTrue((package / 'index.xml').exists())
             self.assertTrue((package / 'MovieObject.xml').exists())
             self.assertTrue((package / 'assets' / 'slide1_Play_selected.png').exists())
@@ -296,16 +342,19 @@ class MenuBackendCompatibilityTests(unittest.TestCase):
             ig_plan = json.loads((package / 'hdmv-lite-ig-plan.json').read_text())
             ig_tables = json.loads((package / 'hdmv-lite-ig-tables.json').read_text())
             ig_assembly = json.loads((package / 'hdmv-lite-ig-assembly.json').read_text())
+            ig_binary = json.loads((package / 'hdmv-lite-ig-binary-scaffold.json').read_text())
             self.assertEqual(data['schema_version'], 'auto-bluray-hdmv-lite-v1')
             self.assertEqual(ig_plan['schema_version'], 'auto-bluray-hdmv-ig-plan-v1')
             self.assertEqual(ig_tables['schema_version'], 'auto-bluray-hdmv-ig-tables-v1')
             self.assertEqual(ig_assembly['schema_version'], 'auto-bluray-hdmv-ig-assembly-v1')
+            self.assertEqual(ig_binary['schema_version'], 'auto-bluray-hdmv-ig-binary-scaffold-v1')
             self.assertEqual(data['titles'][0]['playlist_id'], '00001')
             self.assertEqual(data['menus'][0]['buttons'][0]['state_assets']['selected'], 'assets/slide1_Play_selected.png')
             self.assertEqual(ig_plan['pages'][0]['buttons'][0]['visual_state_refs']['selected'], 'slide1:Play:selected')
             self.assertTrue(any(obj['id'] == 'slide1:Play:selected' for obj in ig_plan['objects']))
             self.assertTrue(any(row['id'] == 'slide1:Play:selected' for row in ig_tables['object_table']))
             self.assertTrue(ig_assembly['validation']['ok'])
+            self.assertEqual(ig_binary['sections'][0]['name'], 'header')
 
     def test_hdmv_backend_reports_bdj_only_reasons(self):
         with tempfile.TemporaryDirectory() as tmp:
