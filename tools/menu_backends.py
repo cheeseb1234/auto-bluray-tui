@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Any
 from xml.sax.saxutils import escape
 
+from PIL import Image, ImageDraw
+
 MENU_BACKENDS = ('bdj', 'hdmv', 'auto')
 DEFAULT_MENU_BACKEND = 'bdj'
 HDMV_COMPILER_STATUS = 'ir_only_first_milestone'
@@ -460,6 +462,7 @@ def build_hdmv_ig_plan(hdmv_model: dict[str, Any]) -> dict[str, Any]:
             button_id = str(button.get('id') or f'button{button_index}')
             select_value = int(button.get('select_value') or button_index)
             bog_id = f'{menu_id}:bog:{select_value}'
+            button_objects = button.get('object_refs') or {}
             buttons.append({
                 'id': button_id,
                 'bog_id': bog_id,
@@ -470,12 +473,12 @@ def build_hdmv_ig_plan(hdmv_model: dict[str, Any]) -> dict[str, Any]:
                 'action': button.get('action') or {},
                 'visual_state_refs': {
                     'normal': bg_object_id,
-                    'selected': None,
-                    'activated': None,
+                    'selected': button_objects.get('selected'),
+                    'activated': button_objects.get('activated'),
                 },
                 'notes': [
                     'normal state reuses the page background bitmap in the planning IR',
-                    'selected/activated button object bitmaps are not compiled yet',
+                    'selected/activated states use generated per-button bitmap overlays',
                 ],
             })
             bogs.append({
@@ -504,9 +507,76 @@ def build_hdmv_ig_plan(hdmv_model: dict[str, Any]) -> dict[str, Any]:
         'sound_effects': [],
         'notes': [
             'Planning IR only: this is not a compiled Interactive Graphics bitstream.',
-            'Next milestone should add selected/activated button object generation and final HDMV IG encoding.',
+            'Next milestone should encode this plan into final HDMV IG binary segments.',
         ],
     }
+
+
+def _clamp(value: int, low: int, high: int) -> int:
+    return max(low, min(high, value))
+
+
+def _render_button_state_overlay(background_path: Path, hitbox: dict[str, int], *, outline_rgba: tuple[int, int, int, int], fill_rgba: tuple[int, int, int, int]) -> Image.Image:
+    background = Image.open(background_path).convert('RGBA')
+    bg_w, bg_h = background.size
+    x = _clamp(int(hitbox.get('x', 0)), 0, max(bg_w - 1, 0))
+    y = _clamp(int(hitbox.get('y', 0)), 0, max(bg_h - 1, 0))
+    w = max(1, int(hitbox.get('w', 1)))
+    h = max(1, int(hitbox.get('h', 1)))
+    x2 = _clamp(x + w, x + 1, bg_w)
+    y2 = _clamp(y + h, y + 1, bg_h)
+    crop = background.crop((x, y, x2, y2)).copy()
+
+    overlay = Image.new('RGBA', crop.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    max_x = max(crop.size[0] - 1, 0)
+    max_y = max(crop.size[1] - 1, 0)
+    radius = max(4, min(crop.size) // 8)
+    border = max(2, min(crop.size) // 18)
+    draw.rounded_rectangle((0, 0, max_x, max_y), radius=radius, fill=fill_rgba, outline=outline_rgba, width=border)
+    return Image.alpha_composite(crop, overlay)
+
+
+def generate_hdmv_button_state_assets(hdmv_model: dict[str, Any], package_dir: Path) -> None:
+    for menu in hdmv_model.get('menus') or []:
+        background = menu.get('background') or {}
+        background_file = background.get('package_file') or background.get('file')
+        if not background_file:
+            continue
+        background_path = package_dir / background_file
+        if not background_path.exists():
+            continue
+        menu_id = str(menu.get('id') or f'page{menu.get("page_id") or 0}')
+        for button in menu.get('buttons') or []:
+            button_id = str(button.get('id') or 'button')
+            hitbox = button.get('hitbox_px') or {}
+            selected_rel = Path('assets') / f'{menu_id}_{button_id}_selected.png'
+            activated_rel = Path('assets') / f'{menu_id}_{button_id}_activated.png'
+            selected_path = package_dir / selected_rel
+            activated_path = package_dir / activated_rel
+            selected_path.parent.mkdir(parents=True, exist_ok=True)
+
+            _render_button_state_overlay(
+                background_path,
+                hitbox,
+                outline_rgba=(255, 215, 0, 255),
+                fill_rgba=(255, 215, 0, 70),
+            ).save(selected_path)
+            _render_button_state_overlay(
+                background_path,
+                hitbox,
+                outline_rgba=(255, 140, 0, 255),
+                fill_rgba=(255, 140, 0, 120),
+            ).save(activated_path)
+
+            button['object_refs'] = {
+                'selected': f'{menu_id}:{button_id}:selected',
+                'activated': f'{menu_id}:{button_id}:activated',
+            }
+            button['state_assets'] = {
+                'selected': str(selected_rel),
+                'activated': str(activated_rel),
+            }
 
 
 def _write_hdmv_lite_index_xml(path: Path, title_count: int):
@@ -635,14 +705,33 @@ class HdmvMenuBackend(MenuBackend):
                     shutil.copy2(src, dst)
                 background['package_file'] = str(dst.relative_to(package_dir))
 
+        generate_hdmv_button_state_assets(hdmv_model, package_dir)
+
         (package_dir / 'hdmv-lite-menu.json').write_text(json.dumps(hdmv_model, indent=2) + '\n', encoding='utf-8')
         ig_plan = build_hdmv_ig_plan(hdmv_model)
+        for menu in hdmv_model.get('menus') or []:
+            for button in menu.get('buttons') or []:
+                for state_name in ('selected', 'activated'):
+                    asset_file = ((button.get('state_assets') or {}).get(state_name))
+                    object_id = ((button.get('object_refs') or {}).get(state_name))
+                    if asset_file and object_id:
+                        ig_plan['objects'].append({
+                            'id': object_id,
+                            'kind': 'button_state_bitmap',
+                            'menu_id': menu.get('id'),
+                            'button_id': button.get('id'),
+                            'state': state_name,
+                            'file': asset_file,
+                            'width': int((button.get('hitbox_px') or {}).get('w') or 1),
+                            'height': int((button.get('hitbox_px') or {}).get('h') or 1),
+                        })
         (package_dir / 'hdmv-lite-ig-plan.json').write_text(json.dumps(ig_plan, indent=2) + '\n', encoding='utf-8')
         (package_dir / 'README.md').write_text(
             '# HDMV-Lite menu package\n\n'
             'Generated by the first HDMV-Lite backend milestone.\n\n'
             '- static menu/page/button/action IR\n'
             '- lower-level IG planning IR for pages/BOGs/buttons/objects\n'
+            '- generated selected/activated button-state bitmap overlays\n'
             '- no BD-J/JAR/BDJO payloads\n'
             '- Java-free index/MovieObject skeletons when DiscCreationTools are available\n\n'
             'Interactive Graphics stream and final HDMV command bytecode compilation are the next milestone.\n',

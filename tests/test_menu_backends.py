@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 import sys
+from PIL import Image
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 
 from menu_backends import (
@@ -85,15 +86,12 @@ def bdj_only_model():
 
 
 def write_background_assets(menu_dir: Path, model: dict):
-    # Minimal PNG signature bytes are enough for these backend tests; image
-    # decoding belongs to the converter, not backend selection/install.
-    png = b'\x89PNG\r\n\x1a\n'
     for slide in model.get('slides') or []:
         file_name = (slide.get('background') or {}).get('file')
         if file_name:
             path = menu_dir / file_name
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(png)
+            Image.new('RGBA', (1920, 1080), (32, 64, 96, 255)).save(path)
 
 
 class MenuBackendCompatibilityTests(unittest.TestCase):
@@ -199,6 +197,7 @@ class MenuBackendCompatibilityTests(unittest.TestCase):
             self.assertTrue(any(obj['id'] == 'slide1:bg' for obj in ig_plan['objects']))
             self.assertEqual(ig_plan['pages'][0]['buttons'][0]['action']['type'], 'play_title')
             self.assertEqual(ig_plan['pages'][0]['buttons'][0]['visual_state_refs']['normal'], 'slide1:bg')
+            self.assertIsNone(ig_plan['pages'][0]['buttons'][0]['visual_state_refs']['selected'])
 
     def test_hdmv_backend_accepts_safe_menu_and_writes_java_free_package(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -219,6 +218,8 @@ class MenuBackendCompatibilityTests(unittest.TestCase):
             self.assertTrue((package / 'hdmv-lite-ig-plan.json').exists())
             self.assertTrue((package / 'index.xml').exists())
             self.assertTrue((package / 'MovieObject.xml').exists())
+            self.assertTrue((package / 'assets' / 'slide1_Play_selected.png').exists())
+            self.assertTrue((package / 'assets' / 'slide1_Play_activated.png').exists())
             self.assertFalse((tmp_path / 'disc-root' / 'BDMV' / 'JAR').exists())
             self.assertFalse((tmp_path / 'disc-root' / 'BDMV' / 'BDJO').exists())
             data = json.loads((package / 'hdmv-lite-menu.json').read_text())
@@ -226,6 +227,9 @@ class MenuBackendCompatibilityTests(unittest.TestCase):
             self.assertEqual(data['schema_version'], 'auto-bluray-hdmv-lite-v1')
             self.assertEqual(ig_plan['schema_version'], 'auto-bluray-hdmv-ig-plan-v1')
             self.assertEqual(data['titles'][0]['playlist_id'], '00001')
+            self.assertEqual(data['menus'][0]['buttons'][0]['state_assets']['selected'], 'assets/slide1_Play_selected.png')
+            self.assertEqual(ig_plan['pages'][0]['buttons'][0]['visual_state_refs']['selected'], 'slide1:Play:selected')
+            self.assertTrue(any(obj['id'] == 'slide1:Play:selected' for obj in ig_plan['objects']))
 
     def test_hdmv_backend_reports_bdj_only_reasons(self):
         with tempfile.TemporaryDirectory() as tmp:

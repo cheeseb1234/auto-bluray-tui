@@ -98,6 +98,7 @@ The HDMV backend implements the first conservative HDMV-Lite scaffold milestone.
 
 - `hdmv-lite-menu.json` static menu/page/button/action IR
 - `hdmv-lite-ig-plan.json` lower-level page/BOG/button/object planning IR for the future IG compiler
+- generated `assets/*_selected.png` / `*_activated.png` button-state overlay bitmaps for HDMV planning
 - copied static background assets
 - `index.xml` and `MovieObject.xml` skeletons
 - `index.bdmv` / `MovieObject.bdmv` when the bundled DiscCreationTools converters are available
