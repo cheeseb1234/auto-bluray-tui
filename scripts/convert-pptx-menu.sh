@@ -11,30 +11,11 @@ HDC_BDJ_PLATFORM_CLASSES=$ROOT/lib/stubs/enhanced/classes.zip
 EOF
 fi
 
-MENU="$("$PYTHON_BIN" - "$ROOT" "$PROJECT_DIR" <<'PY'
-import sys
-from pathlib import Path
-root = Path(sys.argv[1])
-project = Path(sys.argv[2])
-sys.path.insert(0, str(root / 'tools'))
-import pptx_menu_converter
-menu = pptx_menu_converter.find_project_pptx(project)
-print(menu if menu else '')
-PY
-)"
+MENU="$($PYTHON_BIN "$ROOT/tools/pptx_menu_project.py" find "$PROJECT_DIR")"
 
 if [[ -z "$MENU" ]]; then
   MENU="$PROJECT_DIR/menu.pptx"
-  "$PYTHON_BIN" - "$ROOT" "$PROJECT_DIR" "$MENU" <<'PY'
-import sys
-from pathlib import Path
-root = Path(sys.argv[1])
-project = Path(sys.argv[2])
-menu = Path(sys.argv[3])
-sys.path.insert(0, str(root / 'tools'))
-import pptx_menu_converter
-pptx_menu_converter.generate_menu_pptx_from_template(project, menu)
-PY
+  "$PYTHON_BIN" "$ROOT/tools/pptx_menu_project.py" generate "$PROJECT_DIR" "$MENU"
   if command -v xdg-open >/dev/null 2>&1; then
     xdg-open "$MENU" >/dev/null 2>&1 || true
   fi
