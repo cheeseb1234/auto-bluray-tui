@@ -4,6 +4,19 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Platform to build"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - windows
+          - macos-silicon
+          - macos-intel
+          - linux
 
 permissions:
   contents: write
@@ -12,6 +25,7 @@ jobs:
   build:
     name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == matrix.name }}
     env:
       TSMUXER_VERSION: "2.7.0"
     strategy:
