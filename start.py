@@ -23,7 +23,7 @@ from typing import Sequence
 APP_NAME = "Auto Blu-ray TUI"
 MIN_PYTHON = (3, 10)
 REQUIRED_TOOLS = ("java", "ffmpeg")
-OPTIONAL_TOOLS = ("ffprobe", "tsMuxer", "xorriso")
+OPTIONAL_TOOLS = ("ffprobe", "tsMuxer", "xorriso", "libreoffice", "pdftoppm")
 
 
 class LauncherError(RuntimeError):
@@ -243,6 +243,12 @@ def _iter_tsmuxer_candidates() -> list[Path]:
 
 
 def resolve_tool(name: str) -> tuple[Path | None, str | None]:
+    if name == "libreoffice":
+        for candidate in ("libreoffice", "soffice"):
+            found = shutil.which(candidate)
+            if found:
+                return Path(found), None
+        return None, None
     if name != "tsMuxer":
         found = shutil.which(name)
         return (Path(found), None) if found else (None, None)
@@ -263,6 +269,10 @@ def remediation_hint(name: str) -> str:
         return "brew install --cask temurin@17"
     if name == "xorriso" and system == "Darwin":
         return "brew install xorriso"
+    if name == "libreoffice" and system == "Darwin":
+        return "brew install --cask libreoffice"
+    if name == "pdftoppm" and system == "Darwin":
+        return "brew install poppler"
     if name == "tsMuxer" and system == "Darwin":
         return "Download the macOS release from https://github.com/justdan96/tsMuxer/releases and place tsMuxer/tsMuxeR on PATH"
     if name == "ffmpeg" and system == "Darwin":
@@ -303,6 +313,8 @@ def check_optional_tool(name: str) -> tuple[Path | None, str]:
     version_cmd = [str(exe), "-version"]
     if name == "tsMuxer":
         version_cmd = [str(exe)]
+    elif name == "pdftoppm":
+        version_cmd = [str(exe), "-v"]
     result = capture_command(version_cmd)
     if name == "tsMuxer" and (result.stdout or "").strip():
         return exe, first_output_line(result)

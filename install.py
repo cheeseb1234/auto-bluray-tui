@@ -119,7 +119,9 @@ def install_linux(*, dry_run: bool, check_only: bool, use_sudo: bool) -> None:
 
 
 def install_macos(*, dry_run: bool, check_only: bool) -> None:
-    missing = [tool for tool in ("ffmpeg", "java", "xorriso") if not command_exists(tool)]
+    missing = [tool for tool in ("ffmpeg", "java", "xorriso", "pdftoppm") if not command_exists(tool)]
+    if not command_exists("libreoffice") and not command_exists("soffice"):
+        missing.append("libreoffice")
     if not missing:
         say("macOS system dependencies already appear to be installed.")
         warn("Packaged macOS release archives already include a bundled tsMuxer. Source checkouts still need their own compatible tsMuxer if final authoring fails.")
@@ -136,7 +138,8 @@ def install_macos(*, dry_run: bool, check_only: bool) -> None:
             "Then re-run: python3 install.py"
         )
 
-    run(["brew", "install", "ffmpeg", "xorriso"], dry_run=dry_run)
+    run(["brew", "install", "ffmpeg", "xorriso", "poppler"], dry_run=dry_run)
+    run(["brew", "install", "--cask", "libreoffice"], dry_run=dry_run)
     run(["brew", "install", "--cask", "temurin@17"], dry_run=dry_run)
     warn("If java is still not found after Homebrew finishes, run /usr/libexec/java_home -V and make sure PATH/JAVA_HOME expose the installed JDK.")
     warn("Packaged macOS release archives already include a bundled tsMuxer. Source checkouts should download/build a compatible tsMuxer and place it in tools/bin or on PATH.")

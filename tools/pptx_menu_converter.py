@@ -497,11 +497,23 @@ def assign_video_actions(model):
 
 def export_slide_pngs(pptx: Path, out_assets: Path, target=(1920,1080)):
     out_assets.mkdir(parents=True, exist_ok=True)
+    libreoffice = shutil.which('libreoffice') or shutil.which('soffice')
+    if not libreoffice:
+        raise SystemExit(
+            'Missing LibreOffice/soffice; menu PPTX conversion requires LibreOffice. '
+            'On macOS: brew install --cask libreoffice'
+        )
+    pdftoppm = shutil.which('pdftoppm')
+    if not pdftoppm:
+        raise SystemExit(
+            'Missing pdftoppm; PPTX slide export requires Poppler. '
+            'On macOS: brew install poppler'
+        )
     with tempfile.TemporaryDirectory() as td:
         td=Path(td)
-        subprocess.run(['libreoffice','--headless','--convert-to','pdf','--outdir',str(td),str(pptx)], check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        subprocess.run([libreoffice,'--headless','--convert-to','pdf','--outdir',str(td),str(pptx)], check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         pdf=td/(pptx.stem+'.pdf')
-        subprocess.run(['pdftoppm','-png','-r','96',str(pdf),str(td/'slide')], check=True)
+        subprocess.run([pdftoppm,'-png','-r','96',str(pdf),str(td/'slide')], check=True)
         pngs=sorted(td.glob('slide-*.png'))
         for i,p in enumerate(pngs,1):
             im=Image.open(p).convert('RGB').resize(target, Image.LANCZOS)

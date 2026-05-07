@@ -135,6 +135,13 @@ class StartLauncherTests(unittest.TestCase):
         self.assertIn('requests importable: no', text)
         self.assertIn('tsMuxeR', text)
 
+    def test_resolve_tool_accepts_soffice_alias_for_libreoffice(self):
+        soffice = Path('/tmp/soffice')
+        with mock.patch.object(start.shutil, 'which', side_effect=lambda name: str(soffice) if name == 'soffice' else None):
+            resolved, note = start.resolve_tool('libreoffice')
+        self.assertEqual(resolved, soffice)
+        self.assertIsNone(note)
+
 
 if __name__ == "__main__":
     unittest.main()
