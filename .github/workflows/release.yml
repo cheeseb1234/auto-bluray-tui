@@ -22,38 +22,48 @@ permissions:
   contents: write
 
 jobs:
+  select-matrix:
+    name: Select platforms
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      - name: Build matrix JSON
+        id: select
+        env:
+          INPUT_PLATFORM: ${{ inputs.platform || 'all' }}
+        run: |
+          set -euo pipefail
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+
+          all_targets = [
+              {"name": "windows", "os": "windows-latest", "executable": "auto-bluray-tui.exe", "data-separator": ";", "archive": "auto-bluray-tui-windows.zip"},
+              {"name": "macos-silicon", "os": "macos-latest", "executable": "auto-bluray-tui", "data-separator": ":", "archive": "auto-bluray-tui-macos-silicon.zip", "macos-arch": "arm64"},
+              {"name": "macos-intel", "os": "macos-15-intel", "executable": "auto-bluray-tui", "data-separator": ":", "archive": "auto-bluray-tui-macos-intel.zip", "macos-arch": "x86_64"},
+              {"name": "linux", "os": "ubuntu-latest", "executable": "auto-bluray-tui", "data-separator": ":", "archive": "auto-bluray-tui-linux.zip"},
+          ]
+
+          requested = os.environ.get("INPUT_PLATFORM", "all")
+          if requested == "all":
+              selected = all_targets
+          else:
+              selected = [item for item in all_targets if item["name"] == requested]
+              if not selected:
+                  raise SystemExit(f"unknown platform: {requested}")
+
+          print("matrix=" + json.dumps({"include": selected}, separators=(",", ":")))
+          PY
+
   build:
+    needs: select-matrix
     name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == matrix.name }}
     env:
       TSMUXER_VERSION: "2.7.0"
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - name: windows
-            os: windows-latest
-            executable: auto-bluray-tui.exe
-            data-separator: ";"
-            archive: auto-bluray-tui-windows.zip
-          - name: macos-silicon
-            os: macos-latest
-            executable: auto-bluray-tui
-            data-separator: ":"
-            archive: auto-bluray-tui-macos-silicon.zip
-            macos-arch: arm64
-          - name: macos-intel
-            os: macos-15-intel
-            executable: auto-bluray-tui
-            data-separator: ":"
-            archive: auto-bluray-tui-macos-intel.zip
-            macos-arch: x86_64
-          - name: linux
-            os: ubuntu-latest
-            executable: auto-bluray-tui
-            data-separator: ":"
-            archive: auto-bluray-tui-linux.zip
+      matrix: ${{ fromJson(needs.select-matrix.outputs.matrix) }}
 
     steps:
       - name: Check out repository
