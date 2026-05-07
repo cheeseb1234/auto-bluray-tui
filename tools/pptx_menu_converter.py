@@ -265,6 +265,78 @@ def resolve_slide_action_targets(model: dict):
                     model.setdefault('match_warnings', []).append({'slide': slide.get('id'), 'label': btn.get('raw_text') or btn.get('label'), 'message': warning})
 
 
+def looks_like_button_shape(sp, rect: dict | None) -> bool:
+    """Heuristic: treat filled rectangular text shapes as clickable buttons.
+
+    Some real-world PPTX menus use plain text on a rounded/rectangular filled
+    shape without an explicit `goto:` grammar action. Those should still be kept
+    as button candidates instead of being swallowed as slide titles.
+    """
+    if not rect:
+        return False
+    geom = sp.find('./p:spPr/a:prstGeom', NS)
+    if geom is None or geom.attrib.get('prst') not in {'rect', 'roundRect'}:
+        return False
+    has_fill = sp.find('./p:spPr/a:solidFill', NS) is not None
+    has_line = sp.find('./p:spPr/a:ln', NS) is not None
+    if not (has_fill or has_line):
+        return False
+    return rect.get('w', 0) >= 300000 and rect.get('h', 0) >= 180000
+
+
+def repair_conflicting_slide_links(model: dict) -> None:
+    """Recover likely nav buttons when a PPTX slide link landed on the wrong shape.
+
+    LibreOffice/PowerPoint round-trips occasionally preserve the visible button
+    text boxes but attach the slide hyperlink to a neighboring video button. When
+    we see exactly one unresolved button and at least one video button carrying a
+    hidden slide link, prefer the unresolved button as the menu-navigation target
+    and keep the video button as a video action.
+    """
+    for slide in model.get('slides') or []:
+        buttons = slide.get('buttons') or []
+        unresolved = [
+            btn for btn in buttons
+            if (btn.get('action') or {}).get('kind') in {'unresolved', 'invalid'}
+        ]
+        conflicted = [
+            btn for btn in buttons
+            if (btn.get('action') or {}).get('kind') == 'video'
+            and (btn.get('link_action') or {}).get('kind') == 'slide'
+        ]
+        targets = sorted({(btn.get('link_action') or {}).get('target') for btn in conflicted if (btn.get('link_action') or {}).get('target')})
+        if len(unresolved) != 1 or not conflicted or len(targets) != 1:
+            continue
+        target = targets[0]
+        candidate = unresolved[0]
+        original_target_label = (candidate.get('action') or {}).get('target_label') or candidate.get('label')
+        stale_warning = f'video target not found: {original_target_label}'
+        candidate['parse_warnings'] = [w for w in candidate.get('parse_warnings', []) if w != stale_warning]
+        model['match_warnings'] = [
+            item for item in (model.get('match_warnings') or [])
+            if not (
+                item.get('slide') == slide.get('id')
+                and (item.get('label') == candidate.get('raw_text') or item.get('label') == candidate.get('label'))
+                and item.get('message') == stale_warning
+            )
+        ]
+        candidate['action'] = {
+            'kind': 'slide',
+            'target': target,
+            'target_label': target,
+            'type': 'go_to_menu',
+            'inferred_from_conflicting_link': True,
+        }
+        candidate.setdefault('parse_warnings', []).append(
+            f'inferred slide target "{target}" from neighboring conflicting hyperlink'
+        )
+        model.setdefault('match_warnings', []).append({
+            'slide': slide.get('id'),
+            'label': candidate.get('raw_text') or candidate.get('label'),
+            'message': f'inferred slide target "{target}" from neighboring conflicting hyperlink',
+        })
+
+
 def is_loop_placeholder(label: str, video_name: str|None, link: dict|None, rect: dict|None, src_size: tuple[int, int]):
     """Detect PowerPoint shapes intended to become autoplay/looping slide video.
 
@@ -350,22 +422,29 @@ def extract_slide_model(pptx: Path, project_dir: Path):
                     })
                     continue
                 parsed_is_button = parsed_action and parsed_action.get('kind') not in ('unresolved', 'invalid')
-                action = parsed_action if parsed_is_button else link
+                button_shape = looks_like_button_shape(sp, rect)
+                action = (
+                    parsed_action
+                    if parsed_is_button else
+                    (link or (parsed_action if button_shape and parsed_action else None))
+                )
                 if action:
                     buttons.append({
                         'id': unique_id(display_text, used_ids), 'label': display_text, 'rect_emu': rect,
                         'raw_text': text,
                         'display_text': display_text,
                         'action_text': action_text,
+                        'link_action': link,
                         'parsed_action': parsed_action,
                         'parse_warnings': parse_warnings,
                         'action': action,
                     })
-                if title is None and not link and not parsed_is_button:
+                if title is None and not link and not parsed_is_button and not button_shape:
                     title=text
             slides.append({'id':f'slide{idx}', 'title':title or f'Slide {idx}', 'texts':texts, 'buttons':buttons, 'loop_videos': loop_videos})
     model = {'source': str(pptx), 'slides': slides, 'source_size_emu':[src_w,src_h], 'videos': videos, 'subtitles': subtitles, 'match_warnings': match_warnings}
     resolve_slide_action_targets(model)
+    repair_conflicting_slide_links(model)
     return model
 
 
