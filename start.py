@@ -186,14 +186,75 @@ def find_java_executable() -> Path:
 
 
 def which_tool(name: str) -> Path | None:
-    candidates = [name]
-    if name == "tsMuxer":
-        candidates = ["tsMuxer", "tsMuxeR", "tsmuxer"]
-    for candidate in candidates:
-        found = shutil.which(candidate)
+    path, _reason = resolve_tool(name)
+    return path
+
+
+def _first_output_text(cmd: Sequence[str], *, timeout: int = 5) -> str:
+    try:
+        result = capture_command(cmd, timeout=timeout)
+    except LauncherError:
+        return ""
+    return (result.stdout or "").strip()
+
+
+def _tsmuxer_arch_mismatch(path: Path) -> str | None:
+    if platform.system() != "Darwin":
+        return None
+    machine = platform.machine().lower()
+    if machine not in {"x86_64", "amd64"}:
+        return None
+    description = _first_output_text(["file", str(path)])
+    if not description:
+        return None
+    if "x86_64" in description.lower():
+        return None
+    return f"incompatible macOS binary for this Intel Mac: {description}"
+
+
+def _iter_tsmuxer_candidates() -> list[Path]:
+    aliases = ["tsMuxer", "tsMuxeR", "tsmuxer"]
+    candidates: list[Path] = []
+    seen: set[Path] = set()
+
+    def add(path: Path | None) -> None:
+        if not path:
+            return
+        try:
+            resolved = path.expanduser().resolve()
+        except OSError:
+            resolved = path.expanduser()
+        if resolved in seen:
+            return
+        seen.add(resolved)
+        candidates.append(resolved)
+
+    root = project_root()
+    for base in (root / "tools" / "bin", root / "bin"):
+        for alias in aliases:
+            add(base / alias)
+
+    for alias in aliases:
+        found = shutil.which(alias)
         if found:
-            return Path(found)
-    return None
+            add(Path(found))
+
+    return [path for path in candidates if path.exists()]
+
+
+def resolve_tool(name: str) -> tuple[Path | None, str | None]:
+    if name != "tsMuxer":
+        found = shutil.which(name)
+        return (Path(found), None) if found else (None, None)
+
+    rejected: list[str] = []
+    for candidate in _iter_tsmuxer_candidates():
+        mismatch = _tsmuxer_arch_mismatch(candidate)
+        if mismatch:
+            rejected.append(f"{candidate} ({mismatch})")
+            continue
+        return candidate, None
+    return None, "; ".join(rejected) if rejected else None
 
 
 def remediation_hint(name: str) -> str:
@@ -230,10 +291,12 @@ def check_tool(name: str) -> tuple[Path, str]:
 
 
 def check_optional_tool(name: str) -> tuple[Path | None, str]:
-    exe = which_tool(name)
+    exe, resolution_note = resolve_tool(name)
     if not exe:
         hint = remediation_hint(name)
         message = "not found"
+        if resolution_note:
+            message = f"incompatible binary found: {resolution_note}"
         if hint:
             message += f" — install with: {hint}"
         return None, message

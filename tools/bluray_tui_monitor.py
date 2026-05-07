@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import time
 import os
+import platform
 import signal
 import re
 from pathlib import Path
@@ -709,6 +710,24 @@ def nvidia_summary():
 
 def tool_status(root: Path):
     def find_tool(name: str):
+        if name == 'tsMuxer':
+            aliases = ('tsMuxer', 'tsMuxeR', 'tsmuxer')
+            candidates = []
+            for base in (root / 'tools' / 'bin', root / 'bin'):
+                candidates.extend(base / alias for alias in aliases)
+            for alias in aliases:
+                found = shutil.which(alias)
+                if found:
+                    candidates.append(Path(found))
+            for candidate in candidates:
+                if not candidate.exists():
+                    continue
+                if platform.system() == 'Darwin' and platform.machine().lower() in {'x86_64', 'amd64'}:
+                    probe = subprocess.run(['file', str(candidate)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                    if probe.returncode == 0 and 'x86_64' not in (probe.stdout or '').lower():
+                        continue
+                return str(candidate)
+            return None
         local = root / 'tools' / 'bin' / name
         if local.exists():
             return str(local)

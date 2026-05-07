@@ -9,6 +9,54 @@ import start
 
 
 class StartLauncherTests(unittest.TestCase):
+    def test_resolve_tool_prefers_bundled_tsmuxer_over_incompatible_path_on_intel_macos(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bundled = root / 'tools' / 'bin' / 'tsMuxer'
+            bundled.parent.mkdir(parents=True)
+            bundled.write_text('')
+            path_tsmuxer = root / 'path-tsMuxer'
+            path_tsmuxer.write_text('')
+
+            def fake_capture(cmd, timeout=10):
+                target = Path(cmd[1])
+                if target == bundled:
+                    return subprocess.CompletedProcess(cmd, 0, stdout='Mach-O 64-bit executable x86_64\n')
+                if target == path_tsmuxer:
+                    return subprocess.CompletedProcess(cmd, 0, stdout='Mach-O 64-bit executable arm64\n')
+                raise AssertionError(f'unexpected command: {cmd}')
+
+            with mock.patch.object(start, 'project_root', return_value=root), \
+                 mock.patch.object(start.platform, 'system', return_value='Darwin'), \
+                 mock.patch.object(start.platform, 'machine', return_value='x86_64'), \
+                 mock.patch.object(start, 'capture_command', side_effect=fake_capture), \
+                 mock.patch.object(start.shutil, 'which', side_effect=lambda name: str(path_tsmuxer) if name == 'tsMuxer' else None):
+                resolved, note = start.resolve_tool('tsMuxer')
+
+            self.assertEqual(resolved, bundled.resolve())
+            self.assertIsNone(note)
+
+    def test_check_optional_tool_reports_incompatible_tsmuxer_on_intel_macos(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bad = Path(tmp) / 'tsMuxer'
+            bad.write_text('')
+
+            def fake_capture(cmd, timeout=10):
+                self.assertEqual(cmd, ['file', str(bad)])
+                return subprocess.CompletedProcess(cmd, 0, stdout='Mach-O 64-bit executable arm64\n')
+
+            with mock.patch.object(start, 'project_root', return_value=Path('/tmp/app')), \
+                 mock.patch.object(start.platform, 'system', return_value='Darwin'), \
+                 mock.patch.object(start.platform, 'machine', return_value='x86_64'), \
+                 mock.patch.object(start, 'capture_command', side_effect=fake_capture), \
+                 mock.patch.object(start.shutil, 'which', side_effect=lambda name: str(bad) if name == 'tsMuxer' else None):
+                exe, message = start.check_optional_tool('tsMuxer')
+
+            self.assertIsNone(exe)
+            self.assertIn('incompatible binary found', message)
+            self.assertIn(str(bad), message)
+            self.assertIn('Intel Mac', message)
+
     def test_embedded_helper_resolution_stays_inside_project_root(self):
         helper = start._resolve_embedded_helper('tools/opensubtitles_fetch.py')
         self.assertIsNotNone(helper)

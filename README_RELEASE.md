@@ -21,5 +21,6 @@ This archive contains a platform-specific Auto Blu-ray TUI launcher, the cross-p
 - Auto Blu-ray TUI now treats Apple's `/usr/bin/java` launcher stub as **Java missing**, not as a working Java runtime.
 - Recommended Java install on macOS: `brew install --cask temurin@17`
 - Recommended ISO/burn tool install on macOS: `brew install xorriso`
-- `tsMuxer` is not bundled in the release archive; install/download it separately and ensure one of these names is on `PATH`: `tsMuxer`, `tsMuxeR`, or `tsmuxer`.
+- macOS release archives bundle `tsMuxer` inside `app/_internal/tools/bin/tsMuxer`, and the launcher now prefers that bundled copy before anything on `PATH`.
+- If you replace `tsMuxer` manually on an Intel Mac, use an `x86_64` or universal binary. The launcher will reject an arm64-only `tsMuxer`.
 - Bundled workflow shell scripts prefer the packaged Python runtime via `AUTO_BLURAY_PYTHON`, so helper modules such as `requests` do not depend on the user's global `python3` site-packages.

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import platform
 import shutil
 import subprocess
 import zipfile
@@ -34,14 +35,27 @@ def read_json(path: Path):
 
 
 def which(root: Path, name: str):
+    if name == 'tsMuxer':
+        aliases = ('tsMuxer', 'tsMuxeR', 'tsmuxer')
+        candidates = []
+        for base in (root / 'tools' / 'bin', root / 'bin'):
+            candidates.extend(base / alias for alias in aliases)
+        for alias in aliases:
+            found = shutil.which(alias)
+            if found:
+                candidates.append(Path(found))
+        for candidate in candidates:
+            if not candidate.exists():
+                continue
+            if platform.system() == 'Darwin' and platform.machine().lower() in {'x86_64', 'amd64'}:
+                probe = subprocess.run(['file', str(candidate)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                if probe.returncode == 0 and 'x86_64' not in (probe.stdout or '').lower():
+                    continue
+            return candidate
+        return None
     local = root / 'tools' / 'bin' / name
     if local.exists():
         return local
-    if name == 'tsMuxer':
-        for alt in ('tsMuxeR', 'tsmuxer'):
-            local_alt = root / 'tools' / 'bin' / alt
-            if local_alt.exists():
-                return local_alt
     found = shutil.which(name)
     return Path(found) if found else None
 
@@ -346,7 +360,7 @@ def main():
 
     ts_muxer = which(root, 'tsMuxer')
     if not ts_muxer:
-        raise SystemExit('Missing tsMuxer; run scripts/get-tsmuxer.sh first')
+        raise SystemExit('Missing compatible tsMuxer; bundle one in tools/bin or install a macOS x86_64/universal build and ensure it is on PATH')
     mkisofs_cmd = mkisofs_udf_command(root) if not args.no_iso else None
     if not args.no_iso and not mkisofs_cmd:
         raise SystemExit(

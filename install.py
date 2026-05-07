@@ -122,11 +122,11 @@ def install_macos(*, dry_run: bool, check_only: bool) -> None:
     missing = [tool for tool in ("ffmpeg", "java", "xorriso") if not command_exists(tool)]
     if not missing:
         say("macOS system dependencies already appear to be installed.")
-        warn("tsMuxer is not auto-installed on macOS. If final authoring fails, install/download tsMuxer and ensure tsMuxer/tsMuxeR is on PATH.")
+        warn("Packaged macOS release archives already include a bundled tsMuxer. Source checkouts still need their own compatible tsMuxer if final authoring fails.")
         return
     warn(f"Missing system tools: {', '.join(missing)}")
     if check_only:
-        warn("tsMuxer is not auto-installed on macOS. Install/download it separately and ensure tsMuxer/tsMuxeR is on PATH.")
+        warn("Packaged macOS release archives already include a bundled tsMuxer. Source checkouts still need a compatible tsMuxer on PATH or in tools/bin.")
         return
 
     if not command_exists("brew"):
@@ -139,7 +139,7 @@ def install_macos(*, dry_run: bool, check_only: bool) -> None:
     run(["brew", "install", "ffmpeg", "xorriso"], dry_run=dry_run)
     run(["brew", "install", "--cask", "temurin@17"], dry_run=dry_run)
     warn("If java is still not found after Homebrew finishes, run /usr/libexec/java_home -V and make sure PATH/JAVA_HOME expose the installed JDK.")
-    warn("tsMuxer is not auto-installed on macOS. Download the macOS release from https://github.com/justdan96/tsMuxer/releases and place tsMuxer/tsMuxeR on PATH.")
+    warn("Packaged macOS release archives already include a bundled tsMuxer. Source checkouts should download/build a compatible tsMuxer and place it in tools/bin or on PATH.")
 
 
 def install_windows(*, dry_run: bool, check_only: bool) -> None:

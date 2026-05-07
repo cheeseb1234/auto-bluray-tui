@@ -12,6 +12,8 @@ jobs:
   build:
     name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    env:
+      TSMUXER_VERSION: "2.7.0"
     strategy:
       fail-fast: false
       matrix:
@@ -54,6 +56,34 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install pyinstaller
           if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
+        shell: bash
+
+      - name: Bundle macOS Apple Silicon tsMuxer
+        if: matrix.name == 'macos-silicon'
+        run: |
+          set -euo pipefail
+          mkdir -p tools/bin
+          curl -L --fail -o /tmp/tsMuxer-mac.zip "https://github.com/justdan96/tsMuxer/releases/download/${TSMUXER_VERSION}/tsMuxer-${TSMUXER_VERSION}-mac.zip"
+          unzip -q /tmp/tsMuxer-mac.zip -d /tmp/tsmuxer-mac
+          cp /tmp/tsmuxer-mac/tsMuxeR tools/bin/tsMuxer
+          chmod +x tools/bin/tsMuxer
+          file tools/bin/tsMuxer
+        shell: bash
+
+      - name: Build and bundle macOS Intel tsMuxer
+        if: matrix.name == 'macos-intel'
+        run: |
+          set -euo pipefail
+          mkdir -p tools/bin
+          brew install freetype zlib pkgconf
+          export PKG_CONFIG_PATH="$(brew --prefix zlib)/lib/pkgconfig:$(brew --prefix freetype)/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+          export CMAKE_PREFIX_PATH="$(brew --prefix zlib);$(brew --prefix freetype);${CMAKE_PREFIX_PATH:-}"
+          git clone --depth 1 --branch "${TSMUXER_VERSION}" https://github.com/justdan96/tsMuxer.git /tmp/tsmuxer-src
+          cmake -S /tmp/tsmuxer-src -B /tmp/tsmuxer-src/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/tsmuxer-src/build --target tsmuxer --parallel
+          cp /tmp/tsmuxer-src/build/tsMuxer/tsmuxer tools/bin/tsMuxer
+          chmod +x tools/bin/tsMuxer
+          file tools/bin/tsMuxer
         shell: bash
 
       - name: Build standalone executable with PyInstaller
@@ -105,6 +135,9 @@ jobs:
           grep -F "Bundled helper python:" smoke-doctor.txt
           grep -F "requests importable: yes" smoke-doctor.txt
           grep -F "tsMuxer" smoke-doctor.txt
+          if [[ "${{ matrix.name }}" == macos-* ]]; then
+            grep -F "_internal/tools/bin/tsMuxer" smoke-doctor.txt
+          fi
         shell: bash
 
       - name: Smoke test packaged helper runtime
@@ -162,6 +195,8 @@ jobs:
               stage / "app" / "_internal" / "bin" / "grincompiler.jar",
               stage / "app" / "_internal" / "DiscCreationTools" / "index" / "index.xsd",
           ]
+          if "${{ matrix.name }}".startswith("macos-"):
+              required.append(stage / "app" / "_internal" / "tools" / "bin" / "tsMuxer")
           missing = [str(path) for path in required if not path.exists()]
           if missing:
               raise SystemExit("Missing expected runtime asset(s):\n" + "\n".join(missing))

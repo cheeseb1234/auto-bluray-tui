@@ -1,21 +1,33 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import argparse, json, shutil, subprocess
+import argparse, json, platform, shutil, subprocess
 from pathlib import Path
 
 
 def which(name):
     root=Path(__file__).resolve().parents[1]
+    if name == 'tsMuxer':
+        aliases = ('tsMuxer', 'tsMuxeR', 'tsmuxer')
+        candidates = []
+        for base in (root / 'tools' / 'bin', root / 'bin'):
+            candidates.extend(base / alias for alias in aliases)
+        for alias in aliases:
+            found = shutil.which(alias)
+            if found:
+                candidates.append(Path(found))
+        for candidate in candidates:
+            if not candidate.exists():
+                continue
+            if platform.system() == 'Darwin' and platform.machine().lower() in {'x86_64', 'amd64'}:
+                probe = subprocess.run(['file', str(candidate)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                if probe.returncode == 0 and 'x86_64' not in (probe.stdout or '').lower():
+                    continue
+            return str(candidate)
+        return None
     local = root / 'tools' / 'bin' / name
     if local.exists():
         return str(local)
-    # The upstream Linux binary is commonly named tsMuxeR, while our wrapper
-    # normalizes it to tsMuxer.
-    if name == 'tsMuxer':
-        local_alt = root / 'tools' / 'bin' / 'tsMuxeR'
-        if local_alt.exists():
-            return str(local_alt)
     return shutil.which(name)
 
 
