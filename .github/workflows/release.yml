@@ -65,6 +65,12 @@ jobs:
             --name auto-bluray-tui \
             --paths tools \
             --hidden-import bluray_tui_monitor \
+            --hidden-import requests \
+            --collect-all requests \
+            --collect-all urllib3 \
+            --collect-all certifi \
+            --collect-all charset_normalizer \
+            --collect-all idna \
             --add-data "lib${{ matrix.data-separator }}lib" \
             --add-data "tools${{ matrix.data-separator }}tools" \
             --add-data "scripts${{ matrix.data-separator }}scripts" \
