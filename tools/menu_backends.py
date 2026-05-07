@@ -13,8 +13,9 @@ import shutil
 import subprocess
 import zipfile
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from xml.sax.saxutils import escape
 
 from PIL import Image, ImageDraw
@@ -23,6 +24,48 @@ MENU_BACKENDS = ('bdj', 'hdmv', 'auto')
 DEFAULT_MENU_BACKEND = 'bdj'
 HDMV_COMPILER_STATUS = 'ir_only_first_milestone'
 HDMV_FUNCTIONAL_COMPILER_STATUSES = {'functional'}
+
+
+@dataclass(frozen=True)
+class HdmvOpcodeSpec:
+    op: str
+    mode: str
+    compiler: Callable[[dict[str, Any], dict[str, Any]], str | None] | None = None
+    note: str = ''
+
+
+def _compile_jump_title_word(row: dict[str, Any], intended: dict[str, Any]) -> str:
+    title_number = int(
+        intended.get('target_title_number')
+        or row.get('target_title_number')
+        or 1
+    )
+    return f'21810000 {title_number:08x} 00000000'
+
+
+HDMV_MOVIEOBJECT_OPCODE_REGISTRY: dict[str, HdmvOpcodeSpec] = {
+    'JumpTitle': HdmvOpcodeSpec(
+        op='JumpTitle',
+        mode='native',
+        compiler=_compile_jump_title_word,
+        note='Trusted public/sample-backed word pattern from local HD Cook Book MovieObject.xml.',
+    ),
+    'JumpObject': HdmvOpcodeSpec(
+        op='JumpObject',
+        mode='fallback',
+        note='Intent is preserved, but no trusted public byte-level mapping is implemented yet.',
+    ),
+    'SetButtonPage': HdmvOpcodeSpec(
+        op='SetButtonPage',
+        mode='fallback',
+        note='Intent is preserved, but no trusted public byte-level mapping is implemented yet.',
+    ),
+    'Nop': HdmvOpcodeSpec(
+        op='Nop',
+        mode='fallback',
+        note='Kept explicit in the graph, but no standalone Nop word is emitted yet.',
+    ),
+}
 
 
 class MenuBackendError(RuntimeError):
@@ -598,6 +641,7 @@ def compile_hdmv_ig_assembly(ig_tables: dict[str, Any]) -> dict[str, Any]:
     bog_table = list(ig_tables.get('bog_table') or [])
 
     object_indexes = {row.get('object_index') for row in object_table}
+    object_rows_by_index = {row.get('object_index'): row for row in object_table}
     page_indexes = {row.get('page_index') for row in page_table}
     button_keys = {(row.get('page_index'), row.get('button_index')) for row in button_table}
     errors: list[dict[str, Any]] = []
@@ -644,6 +688,7 @@ def compile_hdmv_ig_assembly(ig_tables: dict[str, Any]) -> dict[str, Any]:
             'playlist_id': action.get('playlist_id'),
             'title_number': action.get('title_number'),
             'target_menu': action.get('target_menu'),
+            'target_page_index': None,
             'builtin': action.get('builtin'),
         }
         action_index_by_key[key] = record['action_index']
@@ -657,6 +702,25 @@ def compile_hdmv_ig_assembly(ig_tables: dict[str, Any]) -> dict[str, Any]:
         require_object(page.get('background_object_index'), context=f'page[{page_index}].background')
         page_buttons = [row for row in button_table if row.get('page_index') == page_index]
         page_bogs = [row for row in bog_table if row.get('page_index') == page_index]
+
+        background_object_index = page.get('background_object_index')
+        background_object = object_rows_by_index.get(background_object_index)
+        if background_object:
+            if background_object.get('kind') != 'background_bitmap':
+                errors.append({
+                    'type': 'invalid_background_object_kind',
+                    'page_index': page_index,
+                    'object_index': background_object_index,
+                    'kind': background_object.get('kind'),
+                })
+            if background_object.get('menu_id') != page.get('menu_id'):
+                errors.append({
+                    'type': 'background_menu_mismatch',
+                    'page_index': page_index,
+                    'object_index': background_object_index,
+                    'expected_menu_id': page.get('menu_id'),
+                    'actual_menu_id': background_object.get('menu_id'),
+                })
 
         default_button_index = page.get('default_selected_button_index')
         if default_button_index is not None and (page_index, default_button_index) not in button_keys:
@@ -677,6 +741,56 @@ def compile_hdmv_ig_assembly(ig_tables: dict[str, Any]) -> dict[str, Any]:
                     errors.append({'type': 'invalid_neighbor', 'page_index': page_index, 'button_index': button_index, 'direction': direction, 'target_id': target_id})
                     continue
                 neighbor_indexes[direction] = by_id[target_id]
+
+            hitbox = button.get('hitbox_px') or {}
+            expected_width = int(hitbox.get('w') or 0)
+            expected_height = int(hitbox.get('h') or 0)
+            for state_name, object_index in (
+                ('selected', button.get('selected_object_index')),
+                ('activated', button.get('activated_object_index')),
+            ):
+                if object_index is None:
+                    continue
+                obj = object_rows_by_index.get(object_index)
+                if not obj:
+                    continue
+                if obj.get('kind') != 'button_state_bitmap':
+                    errors.append({
+                        'type': 'invalid_button_state_object_kind',
+                        'page_index': page_index,
+                        'button_index': button_index,
+                        'state': state_name,
+                        'object_index': object_index,
+                        'kind': obj.get('kind'),
+                    })
+                if obj.get('menu_id') != page.get('menu_id') or obj.get('button_id') != button.get('id') or obj.get('state') != state_name:
+                    errors.append({
+                        'type': 'button_state_object_identity_mismatch',
+                        'page_index': page_index,
+                        'button_index': button_index,
+                        'state': state_name,
+                        'object_index': object_index,
+                        'expected_menu_id': page.get('menu_id'),
+                        'actual_menu_id': obj.get('menu_id'),
+                        'expected_button_id': button.get('id'),
+                        'actual_button_id': obj.get('button_id'),
+                        'expected_state': state_name,
+                        'actual_state': obj.get('state'),
+                    })
+                actual_width = int(obj.get('width') or 0)
+                actual_height = int(obj.get('height') or 0)
+                if actual_width != expected_width or actual_height != expected_height:
+                    errors.append({
+                        'type': 'button_state_dimension_mismatch',
+                        'page_index': page_index,
+                        'button_index': button_index,
+                        'state': state_name,
+                        'object_index': object_index,
+                        'expected_width': expected_width,
+                        'expected_height': expected_height,
+                        'actual_width': actual_width,
+                        'actual_height': actual_height,
+                    })
 
             button_assemblies.append({
                 'button_index': button_index,
@@ -717,12 +831,23 @@ def compile_hdmv_ig_assembly(ig_tables: dict[str, Any]) -> dict[str, Any]:
 
     entry_menu = ig_tables.get('entry_menu')
     entry_page_index = None
+    menu_name_to_page_index = {}
     for page in page_table:
+        menu_name_to_page_index[page.get('menu_id')] = page.get('page_index')
         if page.get('menu_id') == entry_menu:
             entry_page_index = page.get('page_index')
-            break
     if entry_menu is not None and entry_page_index is None:
         errors.append({'type': 'invalid_entry_menu', 'entry_menu': entry_menu})
+
+    for row in action_records:
+        target_menu = row.get('target_menu')
+        if target_menu in (None, ''):
+            continue
+        target_page_index = menu_name_to_page_index.get(target_menu)
+        if target_page_index is None:
+            errors.append({'type': 'invalid_action_target_menu', 'action_index': row.get('action_index'), 'target_menu': target_menu})
+            continue
+        row['target_page_index'] = target_page_index
 
     return {
         'schema_version': 'auto-bluray-hdmv-ig-assembly-v1',
@@ -797,13 +922,6 @@ def pack_hdmv_ig_binary_scaffold(ig_assembly: dict[str, Any]) -> dict[str, Any]:
         'UNSUPPORTED': 255,
     }
 
-    menu_to_page_index = {
-        page.get('page_id'): page.get('page_index') for page in pages
-    }
-    menu_name_to_page_index = {
-        # populated conservatively from assembly pages if menu_id is later added here
-    }
-
     for action in actions:
         action_records.extend(_pack_u16(int(action.get('action_index') or 0)))
         action_records.extend(_pack_u8(opcode_map.get(action.get('opcode'), 255)))
@@ -817,15 +935,7 @@ def pack_hdmv_ig_binary_scaffold(ig_assembly: dict[str, Any]) -> dict[str, Any]:
             except ValueError:
                 playlist_num = 0
         action_records.extend(_pack_u16(playlist_num))
-        target_menu = action.get('target_menu')
-        target_page_index = None
-        if target_menu is not None:
-            target_page_index = menu_name_to_page_index.get(target_menu)
-            if target_page_index is None and isinstance(target_menu, str) and target_menu.startswith('slide'):
-                try:
-                    target_page_index = int(target_menu.replace('slide', '')) - 1
-                except ValueError:
-                    target_page_index = None
+        target_page_index = action.get('target_page_index')
         action_records.extend(_pack_u16(_pack_optional_u16(target_page_index)))
 
     for page in sorted(pages, key=lambda row: int(row.get('page_index') or 0)):
@@ -834,8 +944,17 @@ def pack_hdmv_ig_binary_scaffold(ig_assembly: dict[str, Any]) -> dict[str, Any]:
         bogs = sorted(page.get('bogs') or [], key=lambda row: int(row.get('bog_index') or 0))
         if len(buttons) > 0xFFFF or len(bogs) > 0xFFFF:
             raise MenuBackendError(f'Cannot pack HDMV IG binary scaffold: page {page_index} exceeds scaffold count limits.')
+        # Public HDMV IG page semantics expose at least a page id, animation
+        # frame-rate behavior, and per-page background behavior. We still use a
+        # conservative static-page profile here, but the record now reserves
+        # explicit page-level slots for those semantics instead of only packing
+        # counts and object refs.
+        animation_frame_rate_code = int(page.get('animation_frame_rate_code') or 0)
+        background_behavior_code = int(page.get('background_behavior_code') or 1)
         page_records.extend(_pack_u16(page_index))
         page_records.extend(_pack_u16(int(page.get('page_id') or 0)))
+        page_records.extend(_pack_u8(animation_frame_rate_code))
+        page_records.extend(_pack_u8(background_behavior_code))
         page_records.extend(_pack_u16(int(page.get('background_object_index') or 0)))
         page_records.extend(_pack_u16(_pack_optional_u16(page.get('default_selected_button_index'))))
         page_records.extend(_pack_u16(len(buttons)))
@@ -844,6 +963,9 @@ def pack_hdmv_ig_binary_scaffold(ig_assembly: dict[str, Any]) -> dict[str, Any]:
         for button in buttons:
             neighbors = button.get('neighbor_button_indexes') or {}
             object_indexes = button.get('object_indexes') or {}
+            normal_object_index = int(object_indexes.get('normal') or 0)
+            selected_object_index = _pack_optional_u16(object_indexes.get('selected'))
+            activated_object_index = _pack_optional_u16(object_indexes.get('activated'))
             button_records.extend(_pack_u16(page_index))
             button_records.extend(_pack_u16(int(button.get('button_index') or 0)))
             button_records.extend(_pack_u16(int(button.get('select_value') or 0)))
@@ -851,9 +973,23 @@ def pack_hdmv_ig_binary_scaffold(ig_assembly: dict[str, Any]) -> dict[str, Any]:
             button_records.extend(_pack_u16(_pack_optional_u16(neighbors.get('right'))))
             button_records.extend(_pack_u16(_pack_optional_u16(neighbors.get('up'))))
             button_records.extend(_pack_u16(_pack_optional_u16(neighbors.get('down'))))
-            button_records.extend(_pack_u16(int(object_indexes.get('normal') or 0)))
-            button_records.extend(_pack_u16(_pack_optional_u16(object_indexes.get('selected'))))
-            button_records.extend(_pack_u16(_pack_optional_u16(object_indexes.get('activated'))))
+            # Public HDMV IG authoring docs describe button states using start/end
+            # object references plus repeat flags, with optional selected/
+            # activated sound refs. We still emit a conservative static-only
+            # form, but the record layout now mirrors that public state model
+            # instead of a single opaque object ref per state.
+            button_records.extend(_pack_u16(normal_object_index))
+            button_records.extend(_pack_u16(normal_object_index))
+            button_records.extend(_pack_u8(0))
+            button_records.extend(_pack_u8(0xFF))
+            button_records.extend(_pack_u16(selected_object_index))
+            button_records.extend(_pack_u16(selected_object_index))
+            button_records.extend(_pack_u8(0))
+            button_records.extend(_pack_u8(0xFF))
+            button_records.extend(_pack_u16(activated_object_index))
+            button_records.extend(_pack_u16(activated_object_index))
+            button_records.extend(_pack_u8(0))
+            button_records.extend(_pack_u8(0xFF))
             button_records.extend(_pack_u16(int(button.get('action_index') or 0)))
 
         for bog in bogs:
@@ -869,6 +1005,13 @@ def pack_hdmv_ig_binary_scaffold(ig_assembly: dict[str, Any]) -> dict[str, Any]:
 
     sections = []
     offset = 0
+    section_layouts = {
+        'header': 'magic,u16 version,u16 entry_page_index,u16 page_count,u16 object_count,u16 action_count',
+        'pages': 'repeated: u16 page_index,u16 page_id,u8 animation_frame_rate_code,u8 background_behavior_code,u16 background_object_index,u16 default_selected_button_index,u16 button_count,u16 bog_count',
+        'buttons': 'repeated: u16 page_index,u16 button_index,u16 select_value,u16 left,u16 right,u16 up,u16 down,(u16 start,u16 end,u8 repeat,u8 sound)*3 states,u16 action_index',
+        'bogs': 'repeated: u16 page_index,u16 bog_index,u8 auto_action,u8 button_count,button_count*u16 button_index',
+        'actions': 'repeated: u16 action_index,u8 opcode,u8 reserved,u16 title_number,u16 playlist_num,u16 target_page_index',
+    }
     for name, payload in (
         ('header', bytes(header)),
         ('pages', bytes(page_records)),
@@ -881,6 +1024,7 @@ def pack_hdmv_ig_binary_scaffold(ig_assembly: dict[str, Any]) -> dict[str, Any]:
             'offset': offset,
             'size': len(payload),
             'hex': payload.hex(),
+            'record_layout': section_layouts.get(name),
         })
         offset += len(payload)
 
@@ -891,9 +1035,125 @@ def pack_hdmv_ig_binary_scaffold(ig_assembly: dict[str, Any]) -> dict[str, Any]:
         'sections': sections,
         'notes': [
             'Deterministic byte-oriented scaffold only; not a final HDMV IG bitstream.',
-            'Next milestone should replace these placeholder record layouts with real HDMV IG binary field semantics.',
+            'Button records now mirror the public IG authoring model more closely by encoding per-state start/end refs plus repeat/sound slots in a static-only form.',
+            'Page records now carry explicit animation-frame-rate and background-behavior slots using a conservative static-page profile.',
+            'Next milestone should replace the remaining placeholder record layouts with real HDMV IG binary field semantics.',
         ],
     }
+
+
+def materialize_hdmv_ig_binary_scaffold(ig_binary: dict[str, Any]) -> bytes:
+    """Concatenate scaffold sections into a single byte blob for inspection/tests."""
+    payload = bytearray()
+    expected_offset = 0
+    for section in ig_binary.get('sections') or []:
+        offset = int(section.get('offset') or 0)
+        if offset != expected_offset:
+            raise MenuBackendError(
+                f'Cannot materialize HDMV IG binary scaffold: section {section.get("name")!r} '
+                f'expected offset {expected_offset}, got {offset}.'
+            )
+        chunk = bytes.fromhex(section.get('hex') or '')
+        declared_size = int(section.get('size') or 0)
+        if len(chunk) != declared_size:
+            raise MenuBackendError(
+                f'Cannot materialize HDMV IG binary scaffold: section {section.get("name")!r} '
+                f'declared {declared_size} bytes but hex decodes to {len(chunk)}.'
+            )
+        payload.extend(chunk)
+        expected_offset += len(chunk)
+    if len(payload) != int(ig_binary.get('total_size') or 0):
+        raise MenuBackendError(
+            f'Cannot materialize HDMV IG binary scaffold: total_size={ig_binary.get("total_size")} '
+            f'but materialized {len(payload)} bytes.'
+        )
+    return bytes(payload)
+
+
+def compile_hdmv_ig_packet_container(ig_binary: dict[str, Any]) -> dict[str, Any]:
+    """Wrap scaffold sections in a deterministic packet/container structure.
+
+    This is still not a final Blu-ray Interactive Graphics stream. It provides
+    a concrete packet directory and payload framing layer so later work can swap
+    in real HDMV segment types without revisiting package-level plumbing.
+    """
+    packets = []
+    type_map = {
+        'header': 1,
+        'pages': 2,
+        'buttons': 3,
+        'bogs': 4,
+        'actions': 5,
+    }
+    payload_offset = 0
+    for index, section in enumerate(ig_binary.get('sections') or []):
+        size = int(section.get('size') or 0)
+        packets.append({
+            'packet_index': index,
+            'packet_type': type_map.get(section.get('name'), 255),
+            'section_name': section.get('name'),
+            'payload_offset': payload_offset,
+            'payload_size': size,
+            'hex': section.get('hex') or '',
+        })
+        payload_offset += size
+
+    return {
+        'schema_version': 'auto-bluray-hdmv-ig-packet-container-v1',
+        'source_schema_version': ig_binary.get('schema_version'),
+        'entry_page_index': ig_binary.get('entry_page_index'),
+        'packet_count': len(packets),
+        'payload_size': payload_offset,
+        'packets': packets,
+        'notes': [
+            'Packet/container scaffold only; not a final Blu-ray IGS transport stream.',
+            'Later milestones should replace these generic packet headers with real HDMV segment/container encoding.',
+        ],
+    }
+
+
+def materialize_hdmv_ig_packet_container(container: dict[str, Any]) -> bytes:
+    """Serialize the packet/container scaffold into a deterministic binary blob."""
+    packets = list(container.get('packets') or [])
+    header = bytearray()
+    header.extend(b'IGPK')
+    header.extend(_pack_u16(1))
+    header.extend(_pack_u16(int(container.get('packet_count') or len(packets))))
+    header.extend(_pack_u16(int(container.get('entry_page_index') or 0)))
+    header.extend(_pack_u32(int(container.get('payload_size') or 0)))
+
+    directory = bytearray()
+    payload = bytearray()
+    expected_payload_offset = 0
+    for packet in packets:
+        payload_offset = int(packet.get('payload_offset') or 0)
+        if payload_offset != expected_payload_offset:
+            raise MenuBackendError(
+                f'Cannot materialize HDMV IG packet container: packet {packet.get("packet_index")} '
+                f'expected payload offset {expected_payload_offset}, got {payload_offset}.'
+            )
+        chunk = bytes.fromhex(packet.get('hex') or '')
+        payload_size = int(packet.get('payload_size') or 0)
+        if len(chunk) != payload_size:
+            raise MenuBackendError(
+                f'Cannot materialize HDMV IG packet container: packet {packet.get("packet_index")} '
+                f'declared {payload_size} bytes but hex decodes to {len(chunk)}.'
+            )
+        directory.extend(_pack_u16(int(packet.get('packet_index') or 0)))
+        directory.extend(_pack_u8(int(packet.get('packet_type') or 255)))
+        directory.extend(_pack_u8(0))
+        directory.extend(_pack_u32(payload_offset))
+        directory.extend(_pack_u32(payload_size))
+        payload.extend(chunk)
+        expected_payload_offset += len(chunk)
+
+    if len(payload) != int(container.get('payload_size') or 0):
+        raise MenuBackendError(
+            f'Cannot materialize HDMV IG packet container: payload_size={container.get("payload_size")} '
+            f'but materialized {len(payload)} bytes.'
+        )
+
+    return bytes(header + directory + payload)
 
 
 def _clamp(value: int, low: int, high: int) -> int:
@@ -1004,36 +1264,74 @@ def _write_hdmv_lite_index_xml(path: Path, title_count: int):
 
 
 def compile_hdmv_movieobject_plan(hdmv_model: dict[str, Any]) -> dict[str, Any]:
-    """Build a conservative MovieObject command plan from sample-backed JumpTitle commands.
+    """Build a conservative MovieObject graph plus sample-backed command fallback.
 
     Local HD Cook Book samples use `21810000 <title> 00000000` for Jump Title.
     We reuse that public/sample-backed pattern for title-launch objects while
-    keeping menu-page command compilation explicitly out of scope for now.
+    adding an explicit object graph for menu/page flow so the next compiler
+    milestone can replace fallback commands with real JumpObject/SetButtonPage
+    bytecode instead of reconstructing dispatch intent from scratch.
     """
     titles = list(hdmv_model.get('titles') or [])
+    menus = list(hdmv_model.get('menus') or [])
     jump_title_opcode = '21810000'
     objects = []
+    routes = []
 
     default_title_number = int((titles[0] or {}).get('title_number') or 1) if titles else 1
     default_command = f'{jump_title_opcode} {default_title_number:08x} 00000000'
+    title_object_ids: dict[int, int] = {}
+    menu_object_ids: dict[str, int] = {}
+
+    next_menu_object_id = len(titles) + 2
+    for menu in menus:
+        menu_id = str(menu.get('id') or f'page{len(menu_object_ids)}')
+        menu_object_ids[menu_id] = next_menu_object_id
+        next_menu_object_id += 1
+
     objects.append({
         'mobj_id': 0,
         'kind': 'first_playback',
+        'intended_target_mobj_id': 1 if menus else (2 if titles else None),
         'target_title_number': default_title_number,
+        'intended_commands': [
+            {
+                'op': 'JumpObject' if menus else 'JumpTitle',
+                'target_mobj_id': 1 if menus else None,
+                'target_title_number': None if menus else default_title_number,
+                'notes': 'Desired first-playback dispatch to the interactive top-menu object when menu command compilation is available.',
+            }
+        ],
         'commands': [default_command],
-        'notes': 'Sample-backed JumpTitle fallback until real menu/page command compilation exists.',
+        'fallback_mode': 'sample_jump_title',
+        'notes': 'First-playback intends to jump into the top-menu object graph; actual bytes still use a sample-backed JumpTitle fallback until real JumpObject compilation exists.',
     })
     objects.append({
         'mobj_id': 1,
         'kind': 'top_menu',
+        'entry_menu': hdmv_model.get('entry_menu'),
+        'target_menu': hdmv_model.get('entry_menu'),
+        'target_page_id': next((int(menu.get('page_id') or 0) for menu in menus if menu.get('id') == hdmv_model.get('entry_menu')), None),
+        'intended_target_mobj_id': menu_object_ids.get(str(hdmv_model.get('entry_menu'))) if hdmv_model.get('entry_menu') is not None else None,
+        'intended_commands': [
+            {
+                'op': 'JumpObject' if hdmv_model.get('entry_menu') in menu_object_ids else 'JumpTitle',
+                'target_mobj_id': menu_object_ids.get(str(hdmv_model.get('entry_menu'))) if hdmv_model.get('entry_menu') is not None else None,
+                'target_menu': hdmv_model.get('entry_menu'),
+                'target_page_id': next((int(menu.get('page_id') or 0) for menu in menus if menu.get('id') == hdmv_model.get('entry_menu')), None),
+                'notes': 'Desired Top Menu dispatch into the entry menu page object when menu command compilation is available.',
+            }
+        ],
         'target_title_number': default_title_number,
         'commands': [default_command],
-        'notes': 'Sample-backed Top Menu fallback until real menu/page command compilation exists.',
+        'fallback_mode': 'sample_jump_title',
+        'notes': 'Top Menu intends to jump into the entry menu page object; actual bytes still use a sample-backed JumpTitle fallback until SetButtonPage/JumpObject compilation exists.',
     })
 
     for title in titles:
         title_number = int(title.get('title_number') or 0)
         mobj_id = title_number + 1
+        title_object_ids[title_number] = mobj_id
         command = f'{jump_title_opcode} {title_number:08x} 00000000'
         objects.append({
             'mobj_id': mobj_id,
@@ -1041,19 +1339,164 @@ def compile_hdmv_movieobject_plan(hdmv_model: dict[str, Any]) -> dict[str, Any]:
             'target_title_number': title_number,
             'playlist_id': title.get('playlist_id'),
             'video_file': title.get('video_file'),
+            'intended_commands': [
+                {
+                    'op': 'JumpTitle',
+                    'target_title_number': title_number,
+                    'playlist_id': title.get('playlist_id'),
+                }
+            ],
             'commands': [command],
+            'fallback_mode': 'sample_jump_title',
             'notes': 'Sample-backed JumpTitle command derived from local HD Cook Book MovieObject.xml.',
+        })
+
+    for menu in menus:
+        menu_id = str(menu.get('id') or f'page{len(menu_object_ids)}')
+        page_id = int(menu.get('page_id') or 0)
+        button_routes = []
+        for button in menu.get('buttons') or []:
+            action = button.get('action') or {}
+            action_type = str(action.get('type') or 'noop')
+            route = {
+                'button_id': button.get('id'),
+                'label': button.get('label'),
+                'action_type': action_type,
+            }
+            if action_type == 'play_title':
+                title_number = int(action.get('title_number') or 0)
+                route.update({
+                    'op': 'JumpTitle',
+                    'target_title_number': title_number,
+                    'target_mobj_id': title_object_ids.get(title_number),
+                    'playlist_id': action.get('playlist_id'),
+                })
+            elif action_type in {'go_to_menu', 'return_main_menu'}:
+                target_menu = str(action.get('target_menu') or action.get('target') or hdmv_model.get('entry_menu') or menu_id)
+                target_page_id = next((int(row.get('page_id') or 0) for row in menus if str(row.get('id')) == target_menu), None)
+                route.update({
+                    'op': 'SetButtonPage',
+                    'target_menu': target_menu,
+                    'target_page_id': target_page_id,
+                    'target_mobj_id': menu_object_ids.get(target_menu),
+                })
+            else:
+                route.update({'op': 'Nop'})
+            button_routes.append(route)
+            routes.append({'menu_id': menu_id, **route})
+
+        objects.append({
+            'mobj_id': menu_object_ids[menu_id],
+            'kind': 'menu_page',
+            'menu_id': menu_id,
+            'title': menu.get('title') or menu_id,
+            'page_id': page_id,
+            'button_routes': button_routes,
+            'intended_commands': [
+                {
+                    'op': 'SetButtonPage',
+                    'target_page_id': page_id,
+                    'target_menu': menu_id,
+                }
+            ],
+            'commands': [default_command],
+            'fallback_mode': 'sample_jump_title',
+            'notes': 'Menu page object graph is now modeled explicitly, but still falls back to a sample-backed JumpTitle word until real page-display command compilation exists.',
         })
 
     return {
         'schema_version': 'auto-bluray-hdmv-movieobject-plan-v1',
         'command_source': 'local-hdcookbook-sample',
+        'compiler_status': 'graph_planned_sample_title_fallback',
+        'entry_menu': hdmv_model.get('entry_menu'),
+        'menu_object_ids': menu_object_ids,
+        'title_object_ids': title_object_ids,
+        'routes': routes,
         'objects': objects,
     }
 
 
+def compile_hdmv_movieobject_commands(
+    movieobject_plan: dict[str, Any],
+    *,
+    opcode_registry: dict[str, HdmvOpcodeSpec] | None = None,
+) -> dict[str, Any]:
+    """Compile planned MovieObject ops into command words where known.
+
+    Today only JumpTitle has a sample-backed public word pattern we trust enough
+    to emit directly. Menu/navigation ops still compile in *fallback* mode: we
+    preserve the intended op and target metadata, but emit a safe JumpTitle word
+    so the XML/binary toolchain keeps producing output without inventing opaque
+    undocumented bytes for JumpObject/SetButtonPage yet.
+    """
+    registry = opcode_registry or HDMV_MOVIEOBJECT_OPCODE_REGISTRY
+    compiled_objects = []
+    unsupported_ops: dict[str, int] = {}
+    native_ops: dict[str, int] = {}
+
+    for row in movieobject_plan.get('objects') or []:
+        compiled_rows = []
+        compiled_words = []
+        for command_index, intended in enumerate(row.get('intended_commands') or []):
+            op = str(intended.get('op') or 'Nop')
+            spec = registry.get(op)
+            compiled = {
+                'command_index': command_index,
+                'op': op,
+                'status': 'planned',
+                'word': None,
+                'fallback': None,
+                'registry_mode': spec.mode if spec else 'unregistered',
+            }
+            if spec and spec.mode == 'native' and spec.compiler is not None:
+                word = spec.compiler(row, intended)
+                compiled.update({
+                    'status': 'compiled',
+                    'word': word,
+                    'note': spec.note,
+                })
+                if word:
+                    compiled_words.append(word)
+                native_ops[op] = native_ops.get(op, 0) + 1
+            else:
+                fallback_words = list(row.get('commands') or [])
+                fallback_word = fallback_words[min(command_index, len(fallback_words) - 1)] if fallback_words else None
+                reason = spec.note if spec else f'No opcode registry entry is implemented yet for {op}.'
+                compiled.update({
+                    'status': 'fallback',
+                    'word': fallback_word,
+                    'fallback': {
+                        'mode': row.get('fallback_mode') or 'sample_jump_title',
+                        'reason': reason,
+                    },
+                })
+                if fallback_word:
+                    compiled_words.append(fallback_word)
+                unsupported_ops[op] = unsupported_ops.get(op, 0) + 1
+            compiled_rows.append(compiled)
+
+        compiled_objects.append({
+            **row,
+            'compiled_commands': compiled_rows,
+            'commands': compiled_words or list(row.get('commands') or []),
+        })
+
+    compiler_status = 'compiled_with_fallbacks' if unsupported_ops else 'compiled_native_registry_only'
+    return {
+        **movieobject_plan,
+        'compiler_status': compiler_status,
+        'opcode_registry': {
+            name: {'mode': spec.mode, 'note': spec.note}
+            for name, spec in registry.items()
+        },
+        'native_ops': native_ops,
+        'unsupported_ops': unsupported_ops,
+        'objects': compiled_objects,
+    }
+
+
 def _write_hdmv_lite_movieobject_xml(path: Path, hdmv_model: dict[str, Any]):
-    plan = compile_hdmv_movieobject_plan(hdmv_model)
+    plan = compile_hdmv_movieobject_commands(compile_hdmv_movieobject_plan(hdmv_model))
     objects = []
     for row in plan['objects']:
         note = row.get('notes') or 'HDMV-Lite command plan row'
@@ -1061,7 +1504,15 @@ def _write_hdmv_lite_movieobject_xml(path: Path, hdmv_model: dict[str, Any]):
             f'            <navigationCommands commandId="{idx}">\n                <command>{cmd}</command>\n            </navigationCommands>'
             for idx, cmd in enumerate(row.get('commands') or [])
         )
-        objects.append(f"""        <!-- {escape(note)} -->
+        fallback_notes = []
+        for compiled in row.get('compiled_commands') or []:
+            if compiled.get('status') == 'fallback':
+                fallback = compiled.get('fallback') or {}
+                fallback_notes.append(
+                    f"cmd[{compiled.get('command_index')}] {compiled.get('op')} -> fallback {fallback.get('mode')}: {fallback.get('reason')}"
+                )
+        comment = note if not fallback_notes else note + ' | ' + ' | '.join(fallback_notes)
+        objects.append(f"""        <!-- {escape(comment)} -->
         <movieObject mobjId=\"{int(row.get('mobj_id') or 0)}\">
 {commands_xml}
             <terminalInfo>
@@ -1084,7 +1535,188 @@ def _write_hdmv_lite_movieobject_xml(path: Path, hdmv_model: dict[str, Any]):
 
 
 def _write_hdmv_movieobject_plan_json(path: Path, hdmv_model: dict[str, Any]):
-    path.write_text(json.dumps(compile_hdmv_movieobject_plan(hdmv_model), indent=2) + '\n', encoding='utf-8')
+    plan = compile_hdmv_movieobject_commands(compile_hdmv_movieobject_plan(hdmv_model))
+    path.write_text(json.dumps(plan, indent=2) + '\n', encoding='utf-8')
+
+
+def detect_hdmv_validation_tools(root: Path) -> dict[str, dict[str, Any]]:
+    """Describe available external validation oracles for HDMV output."""
+    checks = {
+        'index_dump': {'path_hint': 'PATH', 'argv': ['index_dump', '{disc_root}']},
+        'mobj_dump': {'path_hint': 'PATH', 'argv': ['mobj_dump', '-d', '{movieobject_bdmv}']},
+        'mpls_dump': {'path_hint': 'PATH', 'argv': ['mpls_dump', '-i', '-c', '-p', '{playlist_sample}']},
+        'clpi_dump': {'path_hint': 'PATH', 'argv': ['clpi_dump', '-c', '-p', '-i', '{clipinfo_sample}']},
+        'hdmv_test': {'path_hint': 'PATH', 'argv': ['hdmv_test', '-v', '{disc_root}']},
+        'sound_dump': {'path_hint': 'PATH', 'argv': ['sound_dump', '{sound_bdmv}']},
+    }
+    out: dict[str, dict[str, Any]] = {}
+    for name, meta in checks.items():
+        found = shutil.which(name)
+        out[name] = {
+            'available': bool(found),
+            'resolved_path': found,
+            'path_hint': meta['path_hint'],
+            'argv_template': meta['argv'],
+        }
+
+    out['index_jar'] = {
+        'available': (root / 'DiscCreationTools' / 'index' / 'dist' / 'index.jar').exists(),
+        'resolved_path': str(root / 'DiscCreationTools' / 'index' / 'dist' / 'index.jar'),
+        'path_hint': 'bundled',
+        'argv_template': ['java', '-jar', str(root / 'DiscCreationTools' / 'index' / 'dist' / 'index.jar'), '{index_xml}', '{index_bdmv}'],
+    }
+    out['movieobject_jar'] = {
+        'available': (root / 'DiscCreationTools' / 'movieobject' / 'dist' / 'movieobject.jar').exists(),
+        'resolved_path': str(root / 'DiscCreationTools' / 'movieobject' / 'dist' / 'movieobject.jar'),
+        'path_hint': 'bundled',
+        'argv_template': ['java', '-jar', str(root / 'DiscCreationTools' / 'movieobject' / 'dist' / 'movieobject.jar'), '{movieobject_xml}', '{movieobject_bdmv}'],
+    }
+    return out
+
+
+def build_hdmv_validation_report(*, root: Path, disc_root: Path, package_dir: Path) -> dict[str, Any]:
+    tools = detect_hdmv_validation_tools(root)
+    playlist_sample = disc_root / 'BDMV' / 'PLAYLIST' / '00000.mpls'
+    clipinfo_sample = disc_root / 'BDMV' / 'CLIPINF' / '00000.clpi'
+    sound_bdmv = disc_root / 'BDMV' / 'AUXDATA' / 'sound.bdmv'
+    context = {
+        'disc_root': str(disc_root),
+        'movieobject_bdmv': str(disc_root / 'BDMV' / 'MovieObject.bdmv'),
+        'playlist_sample': str(playlist_sample),
+        'clipinfo_sample': str(clipinfo_sample),
+        'sound_bdmv': str(sound_bdmv),
+        'index_xml': str(package_dir / 'index.xml'),
+        'index_bdmv': str(disc_root / 'BDMV' / 'index.bdmv'),
+        'movieobject_xml': str(package_dir / 'MovieObject.xml'),
+        'movieobject_bdmv': str(disc_root / 'BDMV' / 'MovieObject.bdmv'),
+    }
+    commands = []
+    for name, meta in tools.items():
+        argv = [token.format(**context) for token in meta.get('argv_template') or []]
+        commands.append({
+            'tool': name,
+            'available': bool(meta.get('available')),
+            'argv': argv,
+        })
+
+    return {
+        'schema_version': 'auto-bluray-hdmv-validation-report-v1',
+        'disc_root': str(disc_root),
+        'package_dir': str(package_dir),
+        'tooling': tools,
+        'commands': commands,
+        'notes': [
+            'Availability reflects PATH/bundled-tool detection on the build host.',
+            'Successful detection does not guarantee the generated HDMV package is playback-correct; use dump tools and real player checks as follow-up oracles.',
+        ],
+    }
+
+
+def build_hdmv_validation_runbook(report: dict[str, Any]) -> str:
+    """Render a shell runbook for external HDMV validation oracles."""
+    lines = [
+        '#!/usr/bin/env bash',
+        'set -euo pipefail',
+        '',
+        '# Generated HDMV validation runbook',
+        '# Run commands manually or as a batch on a host with the required tools installed.',
+        '',
+    ]
+    for command in report.get('commands') or []:
+        tool = command.get('tool') or 'unknown'
+        argv = ' '.join(str(token) for token in command.get('argv') or [])
+        if command.get('available'):
+            lines.append(f'# AVAILABLE: {tool}')
+            lines.append(argv)
+        else:
+            lines.append(f'# MISSING: {tool}')
+            lines.append(f'# {argv}')
+        lines.append('')
+    return '\n'.join(lines).rstrip() + '\n'
+
+
+def run_hdmv_validation_checks(
+    report: dict[str, Any],
+    *,
+    runner: Callable[..., Any] | None = None,
+    include_unavailable: bool = False,
+) -> dict[str, Any]:
+    """Execute available validator commands and capture basic results."""
+    executor = runner or subprocess.run
+    results = []
+    for command in report.get('commands') or []:
+        tool = command.get('tool') or 'unknown'
+        available = bool(command.get('available'))
+        argv = [str(token) for token in command.get('argv') or []]
+        if not available and not include_unavailable:
+            continue
+        if not available:
+            results.append({
+                'tool': tool,
+                'argv': argv,
+                'available': False,
+                'ok': False,
+                'skipped': True,
+                'returncode': None,
+                'stdout': '',
+                'stderr': 'tool unavailable on this host',
+            })
+            continue
+        try:
+            completed = executor(argv, capture_output=True, text=True, check=False)
+            results.append({
+                'tool': tool,
+                'argv': argv,
+                'available': True,
+                'ok': int(getattr(completed, 'returncode', 1) or 0) == 0,
+                'skipped': False,
+                'returncode': int(getattr(completed, 'returncode', 1) or 0),
+                'stdout': getattr(completed, 'stdout', ''),
+                'stderr': getattr(completed, 'stderr', ''),
+            })
+        except Exception as exc:  # pragma: no cover - defensive guard
+            results.append({
+                'tool': tool,
+                'argv': argv,
+                'available': True,
+                'ok': False,
+                'skipped': False,
+                'returncode': None,
+                'stdout': '',
+                'stderr': str(exc),
+            })
+    executed_count = sum(1 for row in results if not row.get('skipped'))
+    skipped_count = sum(1 for row in results if row.get('skipped'))
+    passed_count = sum(1 for row in results if row.get('ok'))
+    failed_count = sum(1 for row in results if (not row.get('ok')) and (not row.get('skipped')))
+    return {
+        'schema_version': 'auto-bluray-hdmv-validation-run-v1',
+        'command_count': len(results),
+        'executed_count': executed_count,
+        'skipped_count': skipped_count,
+        'passed_count': passed_count,
+        'failed_count': failed_count,
+        'ok': failed_count == 0,
+        'results': results,
+    }
+
+
+def _write_hdmv_validation_report(path: Path, *, root: Path, disc_root: Path, package_dir: Path):
+    report = build_hdmv_validation_report(root=root, disc_root=disc_root, package_dir=package_dir)
+    path.write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+
+
+def _write_hdmv_validation_runbook(path: Path, report: dict[str, Any]):
+    path.write_text(build_hdmv_validation_runbook(report), encoding='utf-8')
+    try:
+        path.chmod(path.stat().st_mode | 0o111)
+    except OSError:
+        pass
+
+
+def _write_hdmv_validation_run(path: Path, report: dict[str, Any]):
+    run_result = run_hdmv_validation_checks(report, include_unavailable=True)
+    path.write_text(json.dumps(run_result, indent=2) + '\n', encoding='utf-8')
 
 
 def _try_compile_hdmv_xml(root: Path, xml_path: Path, binary_path: Path) -> bool:
@@ -1171,6 +1803,10 @@ class HdmvMenuBackend(MenuBackend):
         (package_dir / 'hdmv-lite-ig-assembly.json').write_text(json.dumps(ig_assembly, indent=2) + '\n', encoding='utf-8')
         ig_binary = pack_hdmv_ig_binary_scaffold(ig_assembly)
         (package_dir / 'hdmv-lite-ig-binary-scaffold.json').write_text(json.dumps(ig_binary, indent=2) + '\n', encoding='utf-8')
+        (package_dir / 'hdmv-lite-ig-scaffold.bin').write_bytes(materialize_hdmv_ig_binary_scaffold(ig_binary))
+        ig_container = compile_hdmv_ig_packet_container(ig_binary)
+        (package_dir / 'hdmv-lite-ig-packet-container.json').write_text(json.dumps(ig_container, indent=2) + '\n', encoding='utf-8')
+        (package_dir / 'hdmv-lite-ig-packet-container.bin').write_bytes(materialize_hdmv_ig_packet_container(ig_container))
         (package_dir / 'README.md').write_text(
             '# HDMV-Lite menu package\n\n'
             'Generated by the first HDMV-Lite backend milestone.\n\n'
@@ -1178,10 +1814,11 @@ class HdmvMenuBackend(MenuBackend):
             '- lower-level IG planning IR for pages/BOGs/buttons/objects\n'
             '- normalized IG tables with stable numeric indexes for future binary encoding\n'
             '- serializer-shaped IG assembly export with reference validation\n'
-            '- deterministic byte-oriented IG binary scaffold sections\n'
+            '- deterministic byte-oriented IG binary scaffold sections and concatenated `.bin` blob\n'
+            '- deterministic packet/container scaffold JSON plus concatenated `.bin` blob\n'
             '- generated selected/activated button-state bitmap overlays\n'
             '- no BD-J/JAR/BDJO payloads\n'
-            '- sample-backed MovieObject JumpTitle command plan plus compiled XML/binary when available\n\n'
+            '- explicit MovieObject graph for first-play/top-menu/menu-page/title routing plus sample-backed compiled command fallback\n\n'
             'Interactive Graphics stream and final HDMV command bytecode compilation are the next milestone.\n',
             encoding='utf-8',
         )
@@ -1190,6 +1827,10 @@ class HdmvMenuBackend(MenuBackend):
         _write_hdmv_lite_movieobject_xml(package_dir / 'MovieObject.xml', hdmv_model)
         compiled_index = _try_compile_hdmv_xml(root, package_dir / 'index.xml', bdmv / 'index.bdmv')
         compiled_mobj = _try_compile_hdmv_xml(root, package_dir / 'MovieObject.xml', bdmv / 'MovieObject.bdmv')
+        validation_report = build_hdmv_validation_report(root=root, disc_root=disc_root, package_dir=package_dir)
+        (package_dir / 'validation-report.json').write_text(json.dumps(validation_report, indent=2) + '\n', encoding='utf-8')
+        _write_hdmv_validation_runbook(package_dir / 'validation-commands.sh', validation_report)
+        _write_hdmv_validation_run(package_dir / 'validation-run.json', validation_report)
 
         for name in ('index.bdmv', 'MovieObject.bdmv'):
             src = bdmv / name
@@ -1205,9 +1846,15 @@ class HdmvMenuBackend(MenuBackend):
             'hdmv_lite_ig_tables': str(package_dir / 'hdmv-lite-ig-tables.json'),
             'hdmv_lite_ig_assembly': str(package_dir / 'hdmv-lite-ig-assembly.json'),
             'hdmv_lite_ig_binary_scaffold': str(package_dir / 'hdmv-lite-ig-binary-scaffold.json'),
+            'hdmv_lite_ig_scaffold_bin': str(package_dir / 'hdmv-lite-ig-scaffold.bin'),
+            'hdmv_lite_ig_packet_container': str(package_dir / 'hdmv-lite-ig-packet-container.json'),
+            'hdmv_lite_ig_packet_container_bin': str(package_dir / 'hdmv-lite-ig-packet-container.bin'),
             'index_xml': str(package_dir / 'index.xml'),
             'movieobject_xml': str(package_dir / 'MovieObject.xml'),
             'movieobject_plan': str(package_dir / 'movieobject-plan.json'),
+            'validation_report': str(package_dir / 'validation-report.json'),
+            'validation_runbook': str(package_dir / 'validation-commands.sh'),
+            'validation_run': str(package_dir / 'validation-run.json'),
             'index_bdmv': str(bdmv / 'index.bdmv') if compiled_index else None,
             'movieobject_bdmv': str(bdmv / 'MovieObject.bdmv') if compiled_mobj else None,
             'java_payload': False,

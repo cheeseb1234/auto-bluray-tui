@@ -178,64 +178,78 @@ segment S:VideoPlayback
 ;
 
 feature fixed_image F:slide1.BG 0 0 "assets/slide1_bg.png" ;
-feature fixed_image F:slide1.a_b.Selected 693 359 "assets/slide1_a_b_selected.png" ;
-feature fixed_image F:slide1.a_b.Activated 693 359 "assets/slide1_a_b_activated.png" ;
+feature fixed_image F:slide1.Jello.Selected 166 863 "assets/slide1_Jello_selected.png" ;
+feature fixed_image F:slide1.Jello.Activated 166 863 "assets/slide1_Jello_activated.png" ;
+feature fixed_image F:slide1.Butter.Selected 1298 863 "assets/slide1_Butter_selected.png" ;
+feature fixed_image F:slide1.Butter.Activated 1298 863 "assets/slide1_Butter_activated.png" ;
+feature fixed_image F:slide1.Extra_features.Selected 732 863 "assets/slide1_Extra_features_selected.png" ;
+feature fixed_image F:slide1.Extra_features.Activated 732 863 "assets/slide1_Extra_features_activated.png" ;
 
 feature fixed_image F:slide2.BG 0 0 "assets/slide2_bg.png" ;
-feature fixed_image F:slide2.a.Selected 394 359 "assets/slide2_a_selected.png" ;
-feature fixed_image F:slide2.a.Activated 394 359 "assets/slide2_a_activated.png" ;
-feature fixed_image F:slide2.b.Selected 992 359 "assets/slide2_b_selected.png" ;
-feature fixed_image F:slide2.b.Activated 992 359 "assets/slide2_b_activated.png" ;
-feature fixed_image F:slide2.Main_Menu.Selected 693 856 "assets/slide2_Main_Menu_selected.png" ;
-feature fixed_image F:slide2.Main_Menu.Activated 693 856 "assets/slide2_Main_Menu_activated.png" ;
+feature fixed_image F:slide2.Gravy.Selected 123 863 "assets/slide2_Gravy_selected.png" ;
+feature fixed_image F:slide2.Gravy.Activated 123 863 "assets/slide2_Gravy_activated.png" ;
+feature fixed_image F:slide2.Cheese.Selected 1342 863 "assets/slide2_Cheese_selected.png" ;
+feature fixed_image F:slide2.Cheese.Activated 1342 863 "assets/slide2_Cheese_activated.png" ;
+feature fixed_image F:slide2.Main_Menu.Selected 1342 689 "assets/slide2_Main_Menu_selected.png" ;
+feature fixed_image F:slide2.Main_Menu.Activated 1342 689 "assets/slide2_Main_Menu_activated.png" ;
 
 feature assembly F:slide1.Buttons {
-    a_b_selected F:slide1.a_b.Selected
-    a_b_activated F:slide1.a_b.Activated
+    Jello_selected F:slide1.Jello.Selected
+    Jello_activated F:slide1.Jello.Activated
+    Butter_selected F:slide1.Butter.Selected
+    Butter_activated F:slide1.Butter.Activated
+    Extra_features_selected F:slide1.Extra_features.Selected
+    Extra_features_activated F:slide1.Extra_features.Activated
 } ;
 
 rc_handler visual R:slide1
-    grid { { a_b } }
+    grid { { Jello Extra_features Butter } }
     assembly F:slide1.Buttons
         start_selected true
     select {
-        a_b a_b_selected
+        Jello Jello_selected
+        Butter Butter_selected
+        Extra_features Extra_features_selected
     }
     activate {
-        a_b a_b_activated { activate_segment S:slide2.Enter ; }
+        Jello Jello_activated { activate_segment S:VideoPlayback ; sync_display ; java_command [[ playVideo("jello.mp4", "00001", "S:slide1.Enter", 0); ]] }
+        Butter Butter_activated { activate_segment S:VideoPlayback ; sync_display ; java_command [[ playVideo("butter.mp4", "00002", "S:slide1.Enter", 0); ]] }
+        Extra_features Extra_features_activated { activate_segment S:slide2.Enter ; }
     }
     mouse {
-        a_b ( 701 367 1219 498 )
+        Jello ( 174 871 653 1002 )
+        Butter ( 1306 871 1785 1002 )
+        Extra_features ( 740 871 1219 1002 )
     }
 ;
 
 feature assembly F:slide2.Buttons {
-    a_selected F:slide2.a.Selected
-    a_activated F:slide2.a.Activated
-    b_selected F:slide2.b.Selected
-    b_activated F:slide2.b.Activated
+    Gravy_selected F:slide2.Gravy.Selected
+    Gravy_activated F:slide2.Gravy.Activated
+    Cheese_selected F:slide2.Cheese.Selected
+    Cheese_activated F:slide2.Cheese.Activated
     Main_Menu_selected F:slide2.Main_Menu.Selected
     Main_Menu_activated F:slide2.Main_Menu.Activated
 } ;
 
 rc_handler visual R:slide2
-    grid { { a b } { Main_Menu ( 0 1 ) } }
+    grid { { ( 1 0 ) Main_Menu } { Gravy Cheese } }
     assembly F:slide2.Buttons
         start_selected true
     select {
-        a a_selected
-        b b_selected
+        Gravy Gravy_selected
+        Cheese Cheese_selected
         Main_Menu Main_Menu_selected
     }
     activate {
-        a a_activated { activate_segment S:VideoPlayback ; sync_display ; java_command [[ playVideo("a.mp4", "00001", "S:slide2.Enter", 0); ]] }
-        b b_activated { activate_segment S:VideoPlayback ; sync_display ; java_command [[ playVideo("b.mp4", "00002", "S:slide2.Enter", 0); ]] }
+        Gravy Gravy_activated { activate_segment S:VideoPlayback ; sync_display ; java_command [[ playVideo("gravy.mp4", "00003", "S:slide2.Enter", 0); ]] }
+        Cheese Cheese_activated { activate_segment S:VideoPlayback ; sync_display ; java_command [[ playVideo("cheese.mp4", "00004", "S:slide2.Enter", 0); ]] }
         Main_Menu Main_Menu_activated { activate_segment S:slide1.Enter ; }
     }
     mouse {
-        a ( 402 367 920 498 )
-        b ( 1000 367 1518 498 )
-        Main_Menu ( 701 864 1219 995 )
+        Gravy ( 131 871 523 1002 )
+        Cheese ( 1350 871 1829 1002 )
+        Main_Menu ( 1350 697 1829 828 )
     }
 ;
 

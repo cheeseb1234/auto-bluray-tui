@@ -13,6 +13,8 @@ import platform
 import shutil
 import subprocess
 import importlib
+import importlib.util
+import runpy
 import sys
 from pathlib import Path
 from typing import Sequence
@@ -21,7 +23,7 @@ from typing import Sequence
 APP_NAME = "Auto Blu-ray TUI"
 MIN_PYTHON = (3, 10)
 REQUIRED_TOOLS = ("java", "ffmpeg")
-OPTIONAL_TOOLS = ("ffprobe",)
+OPTIONAL_TOOLS = ("ffprobe", "tsMuxer", "xorriso")
 
 
 class LauncherError(RuntimeError):
@@ -117,8 +119,105 @@ def which_required(name: str) -> Path:
     return Path(found)
 
 
+def _java_runtime_missing_output(text: str) -> bool:
+    normalized = (text or "").lower()
+    return "unable to locate a java runtime" in normalized or "no java runtime present" in normalized
+
+
+def _java_candidates() -> list[Path]:
+    candidates: list[Path] = []
+    seen: set[Path] = set()
+
+    def add(path: Path | None) -> None:
+        if not path:
+            return
+        try:
+            resolved = path.expanduser().resolve()
+        except OSError:
+            resolved = path.expanduser()
+        if resolved in seen:
+            return
+        seen.add(resolved)
+        candidates.append(resolved)
+
+    java_home = os.environ.get("JAVA_HOME")
+    if java_home:
+        add(Path(java_home) / "bin" / "java")
+
+    if platform.system() == "Darwin":
+        for cmd in (["/usr/libexec/java_home", "-v", "17"], ["/usr/libexec/java_home"]):
+            try:
+                result = capture_command(cmd, timeout=5)
+            except LauncherError:
+                continue
+            if result.returncode == 0:
+                home = (result.stdout or "").strip().splitlines()[0].strip()
+                if home:
+                    add(Path(home) / "bin" / "java")
+
+    found = shutil.which("java")
+    if found:
+        add(Path(found))
+
+    return [path for path in candidates if path.exists()]
+
+
+def find_java_executable() -> Path:
+    candidates = _java_candidates()
+    stub_failure: tuple[Path, str] | None = None
+    for exe in candidates:
+        result = capture_command([str(exe), "-version"])
+        if result.returncode == 0:
+            return exe
+        if platform.system() == "Darwin" and _java_runtime_missing_output(result.stdout or ""):
+            stub_failure = (exe, first_output_line(result))
+            continue
+    if stub_failure:
+        exe, detail = stub_failure
+        raise LauncherError(
+            "Java is not installed. macOS found only Apple's /usr/bin/java launcher stub"
+            f" at {exe}. Install a real JDK, for example: brew install --cask temurin@17"
+            f". Probe output: {detail}"
+        )
+    raise LauncherError(
+        "Required dependency 'java' was not found as a working runtime. "
+        "Install a real JDK and make sure java is available via JAVA_HOME, /usr/libexec/java_home, or PATH."
+    )
+
+
+def which_tool(name: str) -> Path | None:
+    candidates = [name]
+    if name == "tsMuxer":
+        candidates = ["tsMuxer", "tsMuxeR", "tsmuxer"]
+    for candidate in candidates:
+        found = shutil.which(candidate)
+        if found:
+            return Path(found)
+    return None
+
+
+def remediation_hint(name: str) -> str:
+    system = platform.system()
+    if name == "java" and system == "Darwin":
+        return "brew install --cask temurin@17"
+    if name == "xorriso" and system == "Darwin":
+        return "brew install xorriso"
+    if name == "tsMuxer" and system == "Darwin":
+        return "Download the macOS release from https://github.com/justdan96/tsMuxer/releases and place tsMuxer/tsMuxeR on PATH"
+    if name == "ffmpeg" and system == "Darwin":
+        return "brew install ffmpeg"
+    if name == "ffprobe" and system == "Darwin":
+        return "brew install ffmpeg"
+    if name == "tsMuxer":
+        return "Install tsMuxer and ensure tsMuxer, tsMuxeR, or tsmuxer is on PATH"
+    return ""
+
+
 def check_tool(name: str) -> tuple[Path, str]:
-    exe = which_required(name)
+    if name == "java":
+        exe = find_java_executable()
+    else:
+        exe = which_required(name)
     # java prints version info to stderr; capture_command merges stderr into stdout.
     version_args = [str(exe), "-version"] if name == "java" else [str(exe), "-version"]
     result = capture_command(version_args)
@@ -131,13 +230,25 @@ def check_tool(name: str) -> tuple[Path, str]:
 
 
 def check_optional_tool(name: str) -> tuple[Path | None, str]:
-    found = shutil.which(name)
-    if not found:
-        return None, "not found"
-    exe = Path(found)
-    result = capture_command([str(exe), "-version"])
+    exe = which_tool(name)
+    if not exe:
+        hint = remediation_hint(name)
+        message = "not found"
+        if hint:
+            message += f" — install with: {hint}"
+        return None, message
+    version_cmd = [str(exe), "-version"]
+    if name == "tsMuxer":
+        version_cmd = [str(exe)]
+    result = capture_command(version_cmd)
+    if name == "tsMuxer" and (result.stdout or "").strip():
+        return exe, first_output_line(result)
     if result.returncode != 0:
-        return exe, f"version check failed: {first_output_line(result)}"
+        hint = remediation_hint(name)
+        message = f"version check failed: {first_output_line(result)}"
+        if hint:
+            message += f" — remediation: {hint}"
+        return exe, message
     return exe, first_output_line(result)
 
 
@@ -212,6 +323,94 @@ def ensure_tools_import_path() -> None:
         os.environ["PYTHONPATH"] = tools + (os.pathsep + env_pythonpath if env_pythonpath else "")
 
 
+def configure_child_python() -> None:
+    os.environ.setdefault("AUTO_BLURAY_PYTHON", sys.executable)
+    os.environ.setdefault("AUTO_BLURAY_APP_ROOT", str(project_root()))
+
+
+def _resolve_embedded_helper(script_arg: str) -> Path | None:
+    if not script_arg:
+        return None
+    path = Path(script_arg)
+    if path.suffix.lower() != ".py":
+        return None
+    if not path.is_absolute():
+        path = (project_root() / path).resolve()
+    else:
+        path = path.resolve()
+    try:
+        path.relative_to(project_root())
+    except ValueError:
+        return None
+    return path if path.is_file() else None
+
+
+def run_embedded_helper(script_path: Path, helper_args: Sequence[str]) -> int:
+    configure_child_python()
+    ensure_tools_import_path()
+    old_argv = sys.argv[:]
+    try:
+        sys.argv = [str(script_path), *list(helper_args)]
+        try:
+            runpy.run_path(str(script_path), run_name="__main__")
+        except SystemExit as exc:
+            code = exc.code
+            if code is None:
+                return 0
+            if isinstance(code, int):
+                return code
+            return 1
+        return 0
+    finally:
+        sys.argv = old_argv
+
+
+def _doctor_lines() -> list[str]:
+    lines = [
+        f"{APP_NAME} doctor",
+        f"OS: {platform.system()} ({platform.platform()})",
+        f"Architecture: {platform.machine()}",
+        f"App root: {project_root()}",
+        f"Launcher python: {sys.executable}",
+        f"Bundled helper python: {os.environ.get('AUTO_BLURAY_PYTHON', sys.executable)}",
+        f"requests importable: {'yes' if importlib.util.find_spec('requests') else 'no'}",
+        "",
+        "Dependency probes:",
+    ]
+
+    for name in ("java", "ffmpeg", "ffprobe", "tsMuxer", "xorriso"):
+        try:
+            if name in REQUIRED_TOOLS:
+                exe, version = check_tool(name)
+                lines.append(f"- {name}: OK — {exe} — {version}")
+            else:
+                exe, version = check_optional_tool(name)
+                if exe:
+                    lines.append(f"- {name}: OK — {exe} — {version}")
+                else:
+                    lines.append(f"- {name}: MISSING — {version}")
+        except LauncherError as exc:
+            lines.append(f"- {name}: ERROR — {exc}")
+
+    lines += ["", "PATH:", os.environ.get("PATH", "")]
+    if platform.system() == "Darwin":
+        lines += [
+            "",
+            "Suggested macOS installs:",
+            "- Java: brew install --cask temurin@17",
+            "- ffmpeg/ffprobe: brew install ffmpeg",
+            "- xorriso: brew install xorriso",
+            "- tsMuxer: download the macOS release from https://github.com/justdan96/tsMuxer/releases and place tsMuxer/tsMuxeR on PATH",
+        ]
+    return lines
+
+
+def print_doctor() -> int:
+    configure_child_python()
+    print("\n".join(_doctor_lines()))
+    return 0
+
+
 def _import_tui_monitor():
     ensure_tools_import_path()
     return importlib.import_module("bluray_tui_monitor")
@@ -219,6 +418,7 @@ def _import_tui_monitor():
 
 def run_tui(project_dir: Path, extra_args: Sequence[str]) -> int:
     """Run the curses TUI in-process so PyInstaller launchers keep working."""
+    configure_child_python()
     monitor = _import_tui_monitor()
     result = monitor.main([str(project_dir), *list(extra_args)])
     return 0 if result is None else int(result)
@@ -231,6 +431,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "project_dir",
+        nargs="?",
         help='Path to the Blu-ray project directory, e.g. start.py "/path/to/project"',
     )
     parser.add_argument(
@@ -248,11 +449,25 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         action="store_true",
         help="Suppress preflight status output before launching the TUI.",
     )
+    parser.add_argument(
+        "--doctor",
+        action="store_true",
+        help="Print dependency diagnostics and remediation hints, then exit.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = parse_args(sys.argv[1:] if argv is None else argv)
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    helper = _resolve_embedded_helper(raw_argv[0]) if raw_argv else None
+    if helper:
+        return run_embedded_helper(helper, raw_argv[1:])
+    args = parse_args(raw_argv)
+    if args.doctor:
+        return print_doctor()
+    if not args.project_dir:
+        print("Error: project_dir is required unless --doctor is used.", file=sys.stderr)
+        return 2
     project_dir = normalize_project_dir(args.project_dir)
     tui_args = list(args.tui_args)
     if tui_args[:1] == ["--"]:

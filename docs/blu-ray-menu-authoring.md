@@ -101,15 +101,27 @@ The HDMV backend implements the first conservative HDMV-Lite scaffold milestone.
 - `hdmv-lite-ig-tables.json` normalized object/page/button/BOG tables with stable numeric indexes
 - `hdmv-lite-ig-assembly.json` serializer-shaped page/button/object assembly export with reference validation
 - `hdmv-lite-ig-binary-scaffold.json` deterministic byte-oriented section dump for future binary packing work
+- `hdmv-lite-ig-scaffold.bin` concatenated binary scaffold blob assembled from those validated sections
+- `hdmv-lite-ig-packet-container.json` first packet/container directory wrapped around the scaffold payloads
+- `hdmv-lite-ig-packet-container.bin` concatenated packet/container blob for inspection and future mux plumbing
 - `movieobject-plan.json` sample-backed HDMV MovieObject command plan for title-launch objects
+- `validation-report.json` detected external validation oracles plus ready-to-run command templates for dump/test tooling
+- `validation-commands.sh` executable runbook that comments out missing tools and leaves detected validators ready to run
+- `validation-run.json` captured result summary from executing available validators on the build host while marking unavailable ones as skipped
 
-The assembly/binary scaffold now also lifts button actions into an explicit action table/opcode plan so `play_title`, `go_to_menu`, `return_main_menu`, and `noop` stop living as opaque JSON blobs and can evolve toward real HDMV command encoding.
+The assembly/binary scaffold now also lifts button actions into an explicit action table/opcode plan so `play_title`, `go_to_menu`, `return_main_menu`, and `noop` stop living as opaque JSON blobs and can evolve toward real HDMV command encoding. Action targets are resolved to concrete page indexes before binary packing so the scaffold no longer relies on slide-name guessing. The assembly validator now also checks real IG invariants from the public authoring model: each page background object must actually be a background object for that page, and selected/activated button-state bitmaps must identify the expected menu/button/state and match the button hitbox dimensions.
+
+`movieobject-plan.json` now carries an explicit object graph for first-playback, top-menu, title-launch, and menu-page dispatch intent. It also includes a first command-compilation pass: trusted public `JumpTitle` words compile directly, while still-unknown ops such as `JumpObject` and `SetButtonPage` are marked as fallback rows with their intended targets preserved. The generated XML therefore stays buildable today without pretending undocumented opcode bytes are known.
+
+The command compiler now runs through a small pluggable opcode registry. Right now that registry promotes only verified `JumpTitle` emission to native output; other ops stay explicitly registered in fallback mode until we have trustworthy byte-level evidence for them.
+
+The HDMV package also now includes a generated validation handoff: a machine-readable `validation-report.json`, an executable `validation-commands.sh` runbook, and a `validation-run.json` result file produced by executing whatever validators are available on the build host. That makes it easier to hand the package to a host with libbluray dump tools installed and run the relevant oracle checks without reconstructing command lines by hand, while still preserving what was actually checked during packaging.
 - generated `assets/*_selected.png` / `*_activated.png` button-state overlay bitmaps for HDMV planning
 - copied static background assets
 - `index.xml` and `MovieObject.xml` generated from the HDMV-Lite package model; title-launch MovieObject commands now use sample-backed `JumpTitle` words instead of all-zero placeholders
 - `index.bdmv` / `MovieObject.bdmv` when the bundled DiscCreationTools converters are available
 
-This is still not a full Interactive Graphics compiler and not a functional final HDMV menu backend. The generated package proves the static menu model, hitboxes, and simple actions are representable; final IG stream and HDMV command bytecode compilation are the next milestone.
+This is still not a full Interactive Graphics compiler and not a functional final HDMV menu backend. The generated package now proves three layers separately: the static menu model, a validated deterministic IG section scaffold, and a first packet/container wrapper around those scaffold payloads. Two byte-level steps are now less generic than before: button records no longer store a single opaque object reference per state, but instead encode per-state start/end object refs plus repeat/sound slots in a static-only form that matches the public HDMV IG authoring model more closely; page records now also carry explicit animation-frame-rate and background-behavior slots using a conservative static-page profile. Final Blu-ray IGS segment encoding and real HDMV command bytecode compilation are still the next milestone.
 
 HDMV-Lite accepted in the current model:
 

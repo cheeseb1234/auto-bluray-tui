@@ -1,24 +1,50 @@
 [
   {
-    "slide": "slide2",
-    "button": "a",
+    "slide": "slide1",
+    "button": "Jello",
     "kind": "button",
     "start_time_seconds": 0,
     "start_timecode": "00:00:00",
-    "video_file": "a.mp4",
+    "chapter_name": null,
+    "video_file": "jello.mp4",
     "playlist_id": "00001",
     "title_number": 1,
-    "encoded_m2ts": "build/bluray-media/encoded/a.m2ts"
+    "encoded_m2ts": "build/bluray-media/encoded/jello.m2ts"
+  },
+  {
+    "slide": "slide1",
+    "button": "Butter",
+    "kind": "button",
+    "start_time_seconds": 0,
+    "start_timecode": "00:00:00",
+    "chapter_name": null,
+    "video_file": "butter.mp4",
+    "playlist_id": "00002",
+    "title_number": 2,
+    "encoded_m2ts": "build/bluray-media/encoded/butter.m2ts"
   },
   {
     "slide": "slide2",
-    "button": "b",
+    "button": "Gravy",
     "kind": "button",
     "start_time_seconds": 0,
     "start_timecode": "00:00:00",
-    "video_file": "b.mp4",
-    "playlist_id": "00002",
-    "title_number": 2,
-    "encoded_m2ts": "build/bluray-media/encoded/b.m2ts"
+    "chapter_name": null,
+    "video_file": "gravy.mp4",
+    "playlist_id": "00003",
+    "title_number": 3,
+    "encoded_m2ts": "build/bluray-media/encoded/gravy.m2ts"
+  },
+  {
+    "slide": "slide2",
+    "button": "Cheese",
+    "kind": "button",
+    "start_time_seconds": 0,
+    "start_timecode": "00:00:00",
+    "chapter_name": null,
+    "video_file": "cheese.mp4",
+    "playlist_id": "00004",
+    "title_number": 4,
+    "encoded_m2ts": "build/bluray-media/encoded/cheese.m2ts"
   }
 ]

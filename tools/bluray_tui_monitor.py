@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import curses
+import importlib.util
 import json
 import shutil
 import subprocess
@@ -37,6 +38,22 @@ DISC_PRESET_LABELS = {
 }
 DISC_PRESET_CAPACITY = {'dvd5': 4_700_000_000, 'dvd9': 8_500_000_000, 'bd25': 25_000_000_000}
 SUPPORTED_VIDEO_EXTS = ('.mp4', '.mkv', '.m2ts', '.mov')
+
+
+def remediation_hint(tool_name: str):
+    if tool_name == 'tsMuxer':
+        if os.name == 'posix' and os.uname().sysname == 'Darwin':
+            return 'Install/download tsMuxer and ensure tsMuxer, tsMuxeR, or tsmuxer is on PATH.'
+        return 'Install tsMuxer and ensure tsMuxer, tsMuxeR, or tsmuxer is on PATH.'
+    if tool_name == 'xorriso':
+        if os.name == 'posix' and os.uname().sysname == 'Darwin':
+            return 'Install with Homebrew: brew install xorriso'
+        return 'Install xorriso/libisoburn before burning discs.'
+    return ''
+
+
+def requests_available():
+    return importlib.util.find_spec('requests') is not None
 
 
 def find_project_pptx(project: Path):
@@ -214,6 +231,12 @@ def project_diagnostics(project: Path, root: Path, rows=None, meta=None, cfg=Non
     def add(severity, message, fix=''):
         issues.append({'severity': severity, 'message': message, 'fix': fix})
 
+    tools = tool_status(root)
+    if not tools.get('tsMuxer'):
+        add('warning', 'tsMuxer is not available yet; final authoring and ISO creation will fail later.', remediation_hint('tsMuxer'))
+    if not tools.get('xorriso'):
+        add('warning', 'xorriso is not available yet; direct ISO burning from the TUI will fail later.', remediation_hint('xorriso'))
+
     vids = video_files(project)
     try:
         menu = find_project_pptx(project)
@@ -247,6 +270,9 @@ def project_diagnostics(project: Path, root: Path, rows=None, meta=None, cfg=Non
         add('info', 'No sidecar subtitles found for some videos; OpenSubtitles lookup is disabled because OPENSUBTITLES_API_KEY is not set.', 'Set OPENSUBTITLES_API_KEY plus OPENSUBTITLES_USERNAME/PASSWORD to auto-download .srt files.')
     elif videos_without_sidecars:
         add('info', 'Some videos have no sidecar subtitles; autopilot will search OpenSubtitles before analyzing media.', ', '.join(videos_without_sidecars[:6]))
+
+    if os.environ.get('OPENSUBTITLES_API_KEY') and not requests_available():
+        add('error', 'OpenSubtitles fetching is enabled, but the Python requests package is not available to helper scripts.', 'Launch the packaged app so helper scripts reuse its Python runtime, or install requests with: python3 -m pip install --user requests')
 
     model = None
     if menu and menu.exists() and vids and pptx_menu_converter:

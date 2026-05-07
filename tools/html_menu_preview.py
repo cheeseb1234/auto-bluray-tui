@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import os
 import webbrowser
 from pathlib import Path
 from typing import Any
@@ -114,6 +115,11 @@ def make_preview(model_path: Path, output: Path, project_dir: Path | None) -> No
     model = json.loads(model_path.read_text())
     base = model_path.parent
     validation_lines, validation_summary = build_validation(model, project_dir)
+    asset_root = Path('.')
+    try:
+        asset_root = Path(base.relative_to(output.parent))
+    except ValueError:
+        asset_root = Path(os.path.relpath(base, output.parent))
 
     for slide in model.get('slides', []):
         slide['preview_order'] = [b.get('id') for b in row_order(slide.get('buttons', []))]
@@ -123,6 +129,7 @@ def make_preview(model_path: Path, output: Path, project_dir: Path | None) -> No
         'validationText': '\n'.join(validation_lines),
         'validationSummary': validation_summary,
         'baseNote': f'Preview generated from {model_path}',
+        'assetRoot': asset_root.as_posix(),
     }
     json_payload = json.dumps(payload, ensure_ascii=False)
     safe_json_payload = json_payload.replace('</', '<\\/')
@@ -195,7 +202,10 @@ const validation = document.getElementById('validation');
 const crumb = document.getElementById('crumb');
 const statusEl = document.getElementById('status');
 
-function relAsset(file) {{ return file || `assets/${{slideId}}_bg.png`; }}
+function relAsset(file) {{
+  const root = data.assetRoot || '.';
+  return `${{root}}/${{file || `assets/${{slideId}}_bg.png`}}`;
+}}
 function orderedButtons(slide) {{
   const map = new Map((slide.buttons || []).map(b => [b.id, b]));
   const order = (slide.preview_order || []).map(id => map.get(id)).filter(Boolean);

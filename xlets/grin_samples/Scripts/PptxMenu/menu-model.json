@@ -1,48 +1,178 @@
 {
-  "source": "/tmp/bluray-project-preview.nBnfrt/menu.pptx",
+  "source": "/mnt/llm/example/menu.pptx",
   "slides": [
     {
       "id": "slide1",
-      "title": "Main Menu",
+      "title": "Slide 1",
       "texts": [
-        "Main Menu",
-        "a, b"
+        "Jello",
+        "Butter",
+        "Extra features"
       ],
       "buttons": [
         {
-          "id": "a_b",
-          "label": "a, b",
+          "id": "Jello",
+          "label": "Jello",
           "rect_emu": {
-            "x": 3679428,
-            "y": 1927987,
-            "w": 2721768,
-            "h": 685800
+            "x": 914040,
+            "y": 4570560,
+            "w": 2512800,
+            "h": 685080
           },
-          "action": {
+          "raw_text": "Jello",
+          "display_text": "Jello",
+          "action_text": "Jello",
+          "link_action": {
             "kind": "slide",
-            "target": "slide2",
-            "type": "go_to_menu",
-            "menu_target": "slide2"
+            "target": "slide2"
+          },
+          "parsed_action": {
+            "kind": "video",
+            "type": "play_title",
+            "target": "jello.mp4",
+            "video_file": "jello.mp4",
+            "playlist_id": "00001",
+            "title_number": 1,
+            "encoded_m2ts": "build/bluray-media/encoded/jello.m2ts",
+            "video_target": "jello.mp4",
+            "playlist": "00001"
+          },
+          "parse_warnings": [],
+          "action": {
+            "kind": "video",
+            "type": "play_title",
+            "target": "jello.mp4",
+            "video_file": "jello.mp4",
+            "playlist_id": "00001",
+            "title_number": 1,
+            "encoded_m2ts": "build/bluray-media/encoded/jello.m2ts",
+            "video_target": "jello.mp4",
+            "playlist": "00001"
           },
           "rect_px": {
-            "x": 701,
-            "y": 367,
-            "w": 518,
+            "x": 174,
+            "y": 871,
+            "w": 479,
             "h": 131
           },
           "hitbox_emu": {
-            "x": 3679428,
-            "y": 1927987,
-            "w": 2721768,
-            "h": 685800
+            "x": 914040,
+            "y": 4570560,
+            "w": 2512800,
+            "h": 685080
           },
           "hitbox_px": {
-            "x": 701,
-            "y": 367,
-            "w": 518,
+            "x": 174,
+            "y": 871,
+            "w": 479,
             "h": 131
           },
           "focus_index": 1
+        },
+        {
+          "id": "Butter",
+          "label": "Butter",
+          "rect_emu": {
+            "x": 6855120,
+            "y": 4570560,
+            "w": 2512800,
+            "h": 685080
+          },
+          "raw_text": "Butter",
+          "display_text": "Butter",
+          "action_text": "Butter",
+          "link_action": null,
+          "parsed_action": {
+            "kind": "video",
+            "type": "play_title",
+            "target": "butter.mp4",
+            "video_file": "butter.mp4",
+            "playlist_id": "00002",
+            "title_number": 2,
+            "encoded_m2ts": "build/bluray-media/encoded/butter.m2ts",
+            "video_target": "butter.mp4",
+            "playlist": "00002"
+          },
+          "parse_warnings": [],
+          "action": {
+            "kind": "video",
+            "type": "play_title",
+            "target": "butter.mp4",
+            "video_file": "butter.mp4",
+            "playlist_id": "00002",
+            "title_number": 2,
+            "encoded_m2ts": "build/bluray-media/encoded/butter.m2ts",
+            "video_target": "butter.mp4",
+            "playlist": "00002"
+          },
+          "rect_px": {
+            "x": 1306,
+            "y": 871,
+            "w": 479,
+            "h": 131
+          },
+          "hitbox_emu": {
+            "x": 6855120,
+            "y": 4570560,
+            "w": 2512800,
+            "h": 685080
+          },
+          "hitbox_px": {
+            "x": 1306,
+            "y": 871,
+            "w": 479,
+            "h": 131
+          },
+          "focus_index": 3
+        },
+        {
+          "id": "Extra_features",
+          "label": "Extra features",
+          "rect_emu": {
+            "x": 3884760,
+            "y": 4570560,
+            "w": 2512800,
+            "h": 685080
+          },
+          "raw_text": "Extra features",
+          "display_text": "Extra features",
+          "action_text": "Extra features",
+          "link_action": null,
+          "parsed_action": {
+            "kind": "unresolved",
+            "raw": "Extra features",
+            "target_label": "Extra features"
+          },
+          "parse_warnings": [
+            "inferred slide target \"slide2\" from neighboring conflicting hyperlink"
+          ],
+          "action": {
+            "kind": "slide",
+            "target": "slide2",
+            "target_label": "slide2",
+            "type": "go_to_menu",
+            "inferred_from_conflicting_link": true,
+            "menu_target": "slide2"
+          },
+          "rect_px": {
+            "x": 740,
+            "y": 871,
+            "w": 479,
+            "h": 131
+          },
+          "hitbox_emu": {
+            "x": 3884760,
+            "y": 4570560,
+            "w": 2512800,
+            "h": 685080
+          },
+          "hitbox_px": {
+            "x": 740,
+            "y": 871,
+            "w": 479,
+            "h": 131
+          },
+          "focus_index": 2
         }
       ],
       "loop_videos": [],
@@ -53,108 +183,152 @@
         "kind": "static_image"
       },
       "focus_order": [
-        "a_b"
+        "Jello",
+        "Extra_features",
+        "Butter"
       ]
     },
     {
       "id": "slide2",
-      "title": "Videos 1",
+      "title": "Slide 2",
       "texts": [
-        "Videos 1",
-        "a",
-        "b",
+        "Gravy",
+        "Cheese",
         "Main Menu"
       ],
       "buttons": [
         {
-          "id": "a",
-          "label": "a",
+          "id": "Gravy",
+          "label": "Gravy",
           "rect_emu": {
-            "x": 2108544,
-            "y": 1927987,
-            "w": 2721768,
-            "h": 685800
+            "x": 685800,
+            "y": 4572360,
+            "w": 2056680,
+            "h": 685080
           },
+          "raw_text": "Gravy",
+          "display_text": "Gravy",
+          "action_text": "Gravy",
+          "link_action": null,
+          "parsed_action": {
+            "kind": "video",
+            "type": "play_title",
+            "target": "gravy.mp4",
+            "video_file": "gravy.mp4",
+            "playlist_id": "00003",
+            "title_number": 3,
+            "encoded_m2ts": "build/bluray-media/encoded/gravy.m2ts",
+            "video_target": "gravy.mp4",
+            "playlist": "00003"
+          },
+          "parse_warnings": [],
           "action": {
             "kind": "video",
-            "target": "a.mp4",
-            "video_file": "a.mp4",
-            "playlist_id": "00001",
-            "title_number": 1,
-            "encoded_m2ts": "build/bluray-media/encoded/a.m2ts",
             "type": "play_title",
-            "video_target": "a.mp4",
-            "playlist": "00001"
+            "target": "gravy.mp4",
+            "video_file": "gravy.mp4",
+            "playlist_id": "00003",
+            "title_number": 3,
+            "encoded_m2ts": "build/bluray-media/encoded/gravy.m2ts",
+            "video_target": "gravy.mp4",
+            "playlist": "00003"
           },
           "rect_px": {
-            "x": 402,
-            "y": 367,
-            "w": 518,
+            "x": 131,
+            "y": 871,
+            "w": 392,
             "h": 131
           },
           "hitbox_emu": {
-            "x": 2108544,
-            "y": 1927987,
-            "w": 2721768,
-            "h": 685800
+            "x": 685800,
+            "y": 4572360,
+            "w": 2056680,
+            "h": 685080
           },
           "hitbox_px": {
-            "x": 402,
-            "y": 367,
-            "w": 518,
-            "h": 131
-          },
-          "focus_index": 1
-        },
-        {
-          "id": "b",
-          "label": "b",
-          "rect_emu": {
-            "x": 5250312,
-            "y": 1927987,
-            "w": 2721768,
-            "h": 685800
-          },
-          "action": {
-            "kind": "video",
-            "target": "b.mp4",
-            "video_file": "b.mp4",
-            "playlist_id": "00002",
-            "title_number": 2,
-            "encoded_m2ts": "build/bluray-media/encoded/b.m2ts",
-            "type": "play_title",
-            "video_target": "b.mp4",
-            "playlist": "00002"
-          },
-          "rect_px": {
-            "x": 1000,
-            "y": 367,
-            "w": 518,
-            "h": 131
-          },
-          "hitbox_emu": {
-            "x": 5250312,
-            "y": 1927987,
-            "w": 2721768,
-            "h": 685800
-          },
-          "hitbox_px": {
-            "x": 1000,
-            "y": 367,
-            "w": 518,
+            "x": 131,
+            "y": 871,
+            "w": 392,
             "h": 131
           },
           "focus_index": 2
         },
         {
+          "id": "Cheese",
+          "label": "Cheese",
+          "rect_emu": {
+            "x": 7088040,
+            "y": 4572360,
+            "w": 2512800,
+            "h": 685080
+          },
+          "raw_text": "Cheese",
+          "display_text": "Cheese",
+          "action_text": "Cheese",
+          "link_action": null,
+          "parsed_action": {
+            "kind": "video",
+            "type": "play_title",
+            "target": "cheese.mp4",
+            "video_file": "cheese.mp4",
+            "playlist_id": "00004",
+            "title_number": 4,
+            "encoded_m2ts": "build/bluray-media/encoded/cheese.m2ts",
+            "video_target": "cheese.mp4",
+            "playlist": "00004"
+          },
+          "parse_warnings": [],
+          "action": {
+            "kind": "video",
+            "type": "play_title",
+            "target": "cheese.mp4",
+            "video_file": "cheese.mp4",
+            "playlist_id": "00004",
+            "title_number": 4,
+            "encoded_m2ts": "build/bluray-media/encoded/cheese.m2ts",
+            "video_target": "cheese.mp4",
+            "playlist": "00004"
+          },
+          "rect_px": {
+            "x": 1350,
+            "y": 871,
+            "w": 479,
+            "h": 131
+          },
+          "hitbox_emu": {
+            "x": 7088040,
+            "y": 4572360,
+            "w": 2512800,
+            "h": 685080
+          },
+          "hitbox_px": {
+            "x": 1350,
+            "y": 871,
+            "w": 479,
+            "h": 131
+          },
+          "focus_index": 3
+        },
+        {
           "id": "Main_Menu",
           "label": "Main Menu",
           "rect_emu": {
-            "x": 3679428,
-            "y": 4536440,
-            "w": 2721768,
-            "h": 685800
+            "x": 7088040,
+            "y": 3657960,
+            "w": 2512800,
+            "h": 685080
           },
+          "raw_text": "Main Menu",
+          "display_text": "Main Menu",
+          "action_text": "Main Menu",
+          "link_action": {
+            "kind": "slide",
+            "target": "slide1",
+            "type": "go_to_menu",
+            "menu_target": "slide1"
+          },
+          "parsed_action": null,
+          "parse_warnings": [],
           "action": {
             "kind": "slide",
             "target": "slide1",
@@ -162,24 +336,24 @@
             "menu_target": "slide1"
           },
           "rect_px": {
-            "x": 701,
-            "y": 864,
-            "w": 518,
+            "x": 1350,
+            "y": 697,
+            "w": 479,
             "h": 131
           },
           "hitbox_emu": {
-            "x": 3679428,
-            "y": 4536440,
-            "w": 2721768,
-            "h": 685800
+            "x": 7088040,
+            "y": 3657960,
+            "w": 2512800,
+            "h": 685080
           },
           "hitbox_px": {
-            "x": 701,
-            "y": 864,
-            "w": 518,
+            "x": 1350,
+            "y": 697,
+            "w": 479,
             "h": 131
           },
-          "focus_index": 3
+          "focus_index": 1
         }
       ],
       "loop_videos": [],
@@ -190,48 +364,86 @@
         "kind": "static_image"
       },
       "focus_order": [
-        "a",
-        "b",
-        "Main_Menu"
+        "Main_Menu",
+        "Gravy",
+        "Cheese"
       ]
     }
   ],
   "source_size_emu": [
-    10080625,
-    5670550
+    10077450,
+    5668963
   ],
   "videos": {
-    "b.mp4": "b.mp4",
-    "b": "b.mp4",
-    "b mp4": "b.mp4",
-    "a.mp4": "a.mp4",
-    "a": "a.mp4",
-    "a mp4": "a.mp4"
+    "gravy.mp4": "gravy.mp4",
+    "gravy": "gravy.mp4",
+    "gravy mp4": "gravy.mp4",
+    "jello.mp4": "jello.mp4",
+    "jello": "jello.mp4",
+    "jello mp4": "jello.mp4",
+    "cheese.mp4": "cheese.mp4",
+    "cheese": "cheese.mp4",
+    "cheese mp4": "cheese.mp4",
+    "butter.mp4": "butter.mp4",
+    "butter": "butter.mp4",
+    "butter mp4": "butter.mp4"
   },
   "subtitles": [],
-  "match_warnings": [],
+  "match_warnings": [
+    {
+      "slide": "slide1",
+      "label": "Extra features",
+      "message": "inferred slide target \"slide2\" from neighboring conflicting hyperlink"
+    }
+  ],
   "video_actions": [
     {
-      "slide": "slide2",
-      "button": "a",
+      "slide": "slide1",
+      "button": "Jello",
       "kind": "button",
       "start_time_seconds": 0,
       "start_timecode": "00:00:00",
-      "video_file": "a.mp4",
+      "chapter_name": null,
+      "video_file": "jello.mp4",
       "playlist_id": "00001",
       "title_number": 1,
-      "encoded_m2ts": "build/bluray-media/encoded/a.m2ts"
+      "encoded_m2ts": "build/bluray-media/encoded/jello.m2ts"
+    },
+    {
+      "slide": "slide1",
+      "button": "Butter",
+      "kind": "button",
+      "start_time_seconds": 0,
+      "start_timecode": "00:00:00",
+      "chapter_name": null,
+      "video_file": "butter.mp4",
+      "playlist_id": "00002",
+      "title_number": 2,
+      "encoded_m2ts": "build/bluray-media/encoded/butter.m2ts"
     },
     {
       "slide": "slide2",
-      "button": "b",
+      "button": "Gravy",
       "kind": "button",
       "start_time_seconds": 0,
       "start_timecode": "00:00:00",
-      "video_file": "b.mp4",
-      "playlist_id": "00002",
-      "title_number": 2,
-      "encoded_m2ts": "build/bluray-media/encoded/b.m2ts"
+      "chapter_name": null,
+      "video_file": "gravy.mp4",
+      "playlist_id": "00003",
+      "title_number": 3,
+      "encoded_m2ts": "build/bluray-media/encoded/gravy.m2ts"
+    },
+    {
+      "slide": "slide2",
+      "button": "Cheese",
+      "kind": "button",
+      "start_time_seconds": 0,
+      "start_timecode": "00:00:00",
+      "chapter_name": null,
+      "video_file": "cheese.mp4",
+      "playlist_id": "00004",
+      "title_number": 4,
+      "encoded_m2ts": "build/bluray-media/encoded/cheese.m2ts"
     }
   ],
   "loop_actions": [],
@@ -239,8 +451,8 @@
   "model_kind": "backend_neutral_menu",
   "coordinate_spaces": {
     "source_emu": {
-      "width": 10080625,
-      "height": 5670550
+      "width": 10077450,
+      "height": 5668963
     },
     "rendered_px": {
       "width": 1920,
@@ -251,15 +463,29 @@
     {
       "playlist_id": "00001",
       "title_number": 1,
-      "video_file": "a.mp4",
-      "encoded_m2ts": "build/bluray-media/encoded/a.m2ts",
+      "video_file": "jello.mp4",
+      "encoded_m2ts": "build/bluray-media/encoded/jello.m2ts",
       "kind": "title"
     },
     {
       "playlist_id": "00002",
       "title_number": 2,
-      "video_file": "b.mp4",
-      "encoded_m2ts": "build/bluray-media/encoded/b.m2ts",
+      "video_file": "butter.mp4",
+      "encoded_m2ts": "build/bluray-media/encoded/butter.m2ts",
+      "kind": "title"
+    },
+    {
+      "playlist_id": "00003",
+      "title_number": 3,
+      "video_file": "gravy.mp4",
+      "encoded_m2ts": "build/bluray-media/encoded/gravy.m2ts",
+      "kind": "title"
+    },
+    {
+      "playlist_id": "00004",
+      "title_number": 4,
+      "video_file": "cheese.mp4",
+      "encoded_m2ts": "build/bluray-media/encoded/cheese.m2ts",
       "kind": "title"
     }
   ],
@@ -273,7 +499,7 @@
     {
       "feature": "button_hitboxes",
       "status": "hdmv_safe",
-      "detail": "4 rectangular button hitbox(es).",
+      "detail": "6 rectangular button hitbox(es).",
       "hdmv_lite_phase": "v0.5"
     },
     {
@@ -285,7 +511,7 @@
     {
       "feature": "play_title_actions",
       "status": "hdmv_safe",
-      "detail": "2 play-title action(s) targeting Blu-ray playlist ids.",
+      "detail": "4 play-title action(s) targeting Blu-ray playlist ids.",
       "hdmv_lite_phase": "v0.5"
     },
     {
@@ -297,7 +523,9 @@
   ],
   "backend_compatibility": {
     "schema_version": "1.0",
-    "requested_backend_default": "hdmv",
+    "requested_backend_default": "bdj",
+    "hdmv_compiler_status": "ir_only_first_milestone",
+    "hdmv_compiler_functional": false,
     "hdmv_safe": true,
     "safe_features": [
       {
@@ -309,7 +537,7 @@
       {
         "feature": "button_hitboxes",
         "status": "hdmv_safe",
-        "detail": "4 rectangular button hitbox(es).",
+        "detail": "6 rectangular button hitbox(es).",
         "hdmv_lite_phase": "v0.5"
       },
       {
@@ -321,7 +549,7 @@
       {
         "feature": "play_title_actions",
         "status": "hdmv_safe",
-        "detail": "2 play-title action(s) targeting Blu-ray playlist ids.",
+        "detail": "4 play-title action(s) targeting Blu-ray playlist ids.",
         "hdmv_lite_phase": "v0.5"
       },
       {
@@ -335,8 +563,8 @@
     "unsupported_features": [],
     "summary": {
       "slides": 2,
-      "buttons": 4,
-      "video_actions": 2,
+      "buttons": 6,
+      "video_actions": 4,
       "slide_actions": 2,
       "loop_videos": 0
     }

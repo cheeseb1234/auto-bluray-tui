@@ -89,9 +89,33 @@ jobs:
           fi
         shell: bash
 
-      - name: Smoke test built executable
+      - name: Smoke test built executable help and doctor
         run: |
-          dist/auto-bluray-tui/${{ matrix.executable }} --help
+          set -euo pipefail
+          app="dist/auto-bluray-tui/${{ matrix.executable }}"
+          "$app" --help > smoke-help.txt
+          "$app" --doctor | tee smoke-doctor.txt
+          grep -F "Auto Blu-ray TUI doctor" smoke-doctor.txt
+          grep -F "Bundled helper python:" smoke-doctor.txt
+          grep -F "requests importable: yes" smoke-doctor.txt
+          grep -F "tsMuxer" smoke-doctor.txt
+        shell: bash
+
+      - name: Smoke test packaged helper runtime
+        run: |
+          set -euo pipefail
+          app="dist/auto-bluray-tui/${{ matrix.executable }}"
+          helper_root="dist/auto-bluray-tui/_internal"
+          project_dir="${RUNNER_TEMP}/auto-bluray-smoke-project"
+          rm -rf "$project_dir"
+          mkdir -p "$project_dir"
+          : > "$project_dir/Example.mp4"
+          AUTO_BLURAY_PYTHON="$app" bash "$helper_root/scripts/fetch-opensubtitles.sh" "$project_dir" > helper-opensubtitles.json
+          grep -F '"status": "skipped"' helper-opensubtitles.json
+          if grep -F "ModuleNotFoundError" helper-opensubtitles.json >/dev/null; then
+            echo "Packaged helper runtime fell back to a Python environment missing bundled modules" >&2
+            exit 1
+          fi
         shell: bash
 
       - name: Stage release archive

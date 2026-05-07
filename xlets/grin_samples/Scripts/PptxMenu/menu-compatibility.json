@@ -1,6 +1,8 @@
 {
   "schema_version": "1.0",
-  "requested_backend_default": "hdmv",
+  "requested_backend_default": "bdj",
+  "hdmv_compiler_status": "ir_only_first_milestone",
+  "hdmv_compiler_functional": false,
   "hdmv_safe": true,
   "safe_features": [
     {
@@ -12,7 +14,7 @@
     {
       "feature": "button_hitboxes",
       "status": "hdmv_safe",
-      "detail": "4 rectangular button hitbox(es).",
+      "detail": "6 rectangular button hitbox(es).",
       "hdmv_lite_phase": "v0.5"
     },
     {
@@ -24,7 +26,7 @@
     {
       "feature": "play_title_actions",
       "status": "hdmv_safe",
-      "detail": "2 play-title action(s) targeting Blu-ray playlist ids.",
+      "detail": "4 play-title action(s) targeting Blu-ray playlist ids.",
       "hdmv_lite_phase": "v0.5"
     },
     {
@@ -38,8 +40,8 @@
   "unsupported_features": [],
   "summary": {
     "slides": 2,
-    "buttons": 4,
-    "video_actions": 2,
+    "buttons": 6,
+    "video_actions": 4,
     "slide_actions": 2,
     "loop_videos": 0
   }
