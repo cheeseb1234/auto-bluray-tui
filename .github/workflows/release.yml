@@ -79,7 +79,7 @@ jobs:
           export PKG_CONFIG_PATH="$(brew --prefix zlib)/lib/pkgconfig:$(brew --prefix freetype)/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
           export CMAKE_PREFIX_PATH="$(brew --prefix zlib);$(brew --prefix freetype);${CMAKE_PREFIX_PATH:-}"
           git clone --depth 1 --branch "${TSMUXER_VERSION}" https://github.com/justdan96/tsMuxer.git /tmp/tsmuxer-src
-          cmake -S /tmp/tsmuxer-src -B /tmp/tsmuxer-src/build -DCMAKE_BUILD_TYPE=Release
+          cmake -S /tmp/tsmuxer-src -B /tmp/tsmuxer-src/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5
           cmake --build /tmp/tsmuxer-src/build --target tsmuxer --parallel
           cp /tmp/tsmuxer-src/build/tsMuxer/tsmuxer tools/bin/tsMuxer
           chmod +x tools/bin/tsMuxer
