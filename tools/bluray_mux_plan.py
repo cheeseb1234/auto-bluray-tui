@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import argparse, json, shutil, subprocess
+import argparse
+import json
+import shutil
+import subprocess
 from pathlib import Path
 
 
@@ -21,7 +24,7 @@ def which(name):
 
 def ffprobe_duration(path: Path):
     try:
-        r=subprocess.run(['ffprobe','-hide_banner','-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',str(path)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        r=subprocess.run(['ffprobe','-hide_banner','-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',str(path)], check=True, capture_output=True, text=True)
         return float(r.stdout.strip())
     except Exception:
         return None

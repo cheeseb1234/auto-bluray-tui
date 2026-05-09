@@ -2,15 +2,16 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import curses
 import importlib.util
 import json
+import os
+import re
 import shutil
+import signal
 import subprocess
 import time
-import os
-import signal
-import re
 from pathlib import Path
 
 try:
@@ -185,10 +186,8 @@ def project_input_files(project: Path):
     if menu and menu.exists():
         files.append(menu)
     files.extend(video_files(project))
-    try:
+    with contextlib.suppress(Exception):
         files.extend(sorted([p for p in project.iterdir() if p.suffix.lower() in ('.srt', '.sup', '.ass', '.ssa')], key=lambda p: p.name.lower()))
-    except Exception:
-        pass
     return files
 
 
@@ -288,7 +287,7 @@ def project_diagnostics(project: Path, root: Path, rows=None, meta=None, cfg=Non
                 add('error', 'No clickable PPTX menu buttons were detected.', 'Use button text that matches a video name or add slide hyperlinks.')
             if not actions:
                 add('error', 'No PPTX buttons match any video files.', 'Rename button text to match video filenames; fuzzy/space/punctuation fixes are automatic when safe.')
-            loop_targets = {l.get('video_file') for s in slides for l in s.get('loop_videos', [])}
+            loop_targets = {loop.get('video_file') for slide in slides for loop in slide.get('loop_videos', [])}
             targets = {a.get('video_file') for a in actions} | loop_targets
             missing_targets = sorted(t for t in targets if t and not (project / t).exists())
             if missing_targets:
@@ -651,8 +650,7 @@ def ffprobe_duration(path: Path):
                 '-show_entries', 'format=duration',
                 '-of', 'default=noprint_wrappers=1:nokey=1', str(path),
             ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
             timeout=5,
         )
@@ -671,8 +669,7 @@ def ffprobe_output_info(path: Path):
                 '-show_entries', 'format=duration,bit_rate:stream=codec_type,codec_name,width,height,sample_rate',
                 '-of', 'json', str(path),
             ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
             timeout=5,
         )
@@ -698,7 +695,7 @@ def ffprobe_output_info(path: Path):
 
 def nvidia_summary():
     try:
-        smi = subprocess.run(['nvidia-smi','--query-gpu=name,driver_version,memory.total','--format=csv,noheader'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=3)
+        smi = subprocess.run(['nvidia-smi','--query-gpu=name,driver_version,memory.total','--format=csv,noheader'], capture_output=True, text=True, timeout=3)
         enc = subprocess.run(['ffmpeg','-hide_banner','-encoders'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=5)
         if smi.returncode == 0 and 'h264_nvenc' in enc.stdout:
             return smi.stdout.strip()
@@ -789,10 +786,8 @@ def stop_running_work(project: Path, rows):
         state_path = project / 'build' / 'bluray-media' / 'logs' / (row.get('file','').replace('/', '_') + '.state.json')
         state = read_json(state_path) or {}
         state.update({'status': 'stopping' if ok else state.get('status', 'running'), 'stopped_at': time.time(), 'stop_message': msg})
-        try:
+        with contextlib.suppress(Exception):
             state_path.write_text(json.dumps(state, indent=2) + '\n')
-        except Exception:
-            pass
 
     workflow = read_workflow_state(project)
     if workflow.get('pid') and workflow.get('status') == 'running' and pid_running(workflow.get('pid')):
@@ -809,14 +804,10 @@ def detect_burners():
         name = dev.name
         model = ''
         vendor = ''
-        try:
+        with contextlib.suppress(Exception):
             model = Path('/sys/block') .joinpath(name, 'device/model').read_text(errors='ignore').strip()
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             vendor = Path('/sys/block') .joinpath(name, 'device/vendor').read_text(errors='ignore').strip()
-        except Exception:
-            pass
         label = ' '.join(x for x in [vendor, model] if x).strip() or name
         burners.append({'device': str(dev), 'label': label})
     return burners
@@ -992,10 +983,8 @@ def collect(project: Path, root: Path):
             pid = adopted_pid
             status = 'running'
             state = {**state, 'status': 'running', 'pid': adopted_pid, 'adopted_by_tui': True, 'adopted_at': time.time()}
-            try:
+            with contextlib.suppress(Exception):
                 (logs / (safe + '.state.json')).write_text(json.dumps(state, indent=2) + '\n')
-            except Exception:
-                pass
         if status == 'done' and state.get('smoke_seconds'):
             status = 'smoke'
         if status == 'done' and encoded_duration and duration and encoded_duration < duration - 2:
@@ -1037,7 +1026,7 @@ def collect(project: Path, root: Path):
         })
 
     total_duration = sum(float(r.get('duration') or 0) for r in rows)
-    total_done = sum(float((r.get('progress_seconds') or r.get('encoded_duration') or 0)) for r in rows)
+    total_done = sum(float(r.get('progress_seconds') or r.get('encoded_duration') or 0) for r in rows)
     overall_percent = min(100.0, total_done / total_duration * 100) if total_duration else None
     done_count = sum(1 for r in rows if r.get('status') == 'done')
     workflow = read_workflow_state(project)
@@ -1275,10 +1264,8 @@ def ensure_menu_template_interactive(stdscr, project: Path, root: Path):
 
 
 def draw(stdscr, project: Path, root: Path):
-    try:
+    with contextlib.suppress(curses.error):
         curses.curs_set(0)
-    except curses.error:
-        pass
     init_colors()
     cfg = load_config(project)
     cfg = prompt_disc_title(stdscr, project, cfg)

@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import gzip
 import json
 import os
 import re
 import struct
-import sys
 import time
 import urllib.parse
 import zipfile
@@ -103,14 +103,10 @@ def search(session: requests.Session, base_url: str, api_key: str, token: str | 
             score += 100
         if not attrs.get('hearing_impaired'):
             score += 25
-        try:
+        with contextlib.suppress(Exception):
             score += min(50, int(attrs.get('download_count') or 0) // 100)
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             score += float(attrs.get('ratings') or 0)
-        except Exception:
-            pass
         scored.append((score, row, files[0]))
     scored.sort(key=lambda x: x[0], reverse=True)
     return scored[0] if scored else None

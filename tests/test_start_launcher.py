@@ -1,9 +1,9 @@
+import subprocess
 import tempfile
 import unittest
 from io import StringIO
 from pathlib import Path
 from unittest import mock
-import subprocess
 
 import start
 
@@ -12,8 +12,9 @@ class StartLauncherTests(unittest.TestCase):
     def test_embedded_helper_resolution_stays_inside_project_root(self):
         helper = start._resolve_embedded_helper('tools/opensubtitles_fetch.py')
         self.assertIsNotNone(helper)
-        self.assertTrue(str(helper).endswith('tools/opensubtitles_fetch.py'))
-        self.assertIsNone(start._resolve_embedded_helper('/tmp/outside.py'))
+        self.assertEqual(helper.parts[-2:], ('tools', 'opensubtitles_fetch.py'))
+        outside = (start.project_root().parent / 'outside.py').resolve()
+        self.assertIsNone(start._resolve_embedded_helper(str(outside)))
 
     def test_run_tui_in_process_passes_project_and_args(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -47,9 +48,9 @@ class StartLauncherTests(unittest.TestCase):
 
         with mock.patch.object(start.platform, 'system', return_value='Darwin'), \
              mock.patch.object(start, '_java_candidates', return_value=[stub]), \
-             mock.patch.object(start, 'capture_command', side_effect=fake_capture):
-            with self.assertRaises(start.LauncherError) as caught:
-                start.find_java_executable()
+             mock.patch.object(start, 'capture_command', side_effect=fake_capture), \
+             self.assertRaises(start.LauncherError) as caught:
+            start.find_java_executable()
         self.assertIn('Java is not installed', str(caught.exception))
         self.assertIn('temurin@17', str(caught.exception))
 

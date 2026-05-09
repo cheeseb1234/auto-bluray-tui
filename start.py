@@ -8,17 +8,16 @@ macOS, and Linux.
 from __future__ import annotations
 
 import argparse
-import os
-import platform
-import shutil
-import subprocess
 import importlib
 import importlib.util
+import os
+import platform
 import runpy
+import shutil
+import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
-
 
 APP_NAME = "Auto Blu-ray TUI"
 MIN_PYTHON = (3, 10)
@@ -214,10 +213,7 @@ def remediation_hint(name: str) -> str:
 
 
 def check_tool(name: str) -> tuple[Path, str]:
-    if name == "java":
-        exe = find_java_executable()
-    else:
-        exe = which_required(name)
+    exe = find_java_executable() if name == "java" else which_required(name)
     # java prints version info to stderr; capture_command merges stderr into stdout.
     version_args = [str(exe), "-version"] if name == "java" else [str(exe), "-version"]
     result = capture_command(version_args)
@@ -334,10 +330,7 @@ def _resolve_embedded_helper(script_arg: str) -> Path | None:
     path = Path(script_arg)
     if path.suffix.lower() != ".py":
         return None
-    if not path.is_absolute():
-        path = (project_root() / path).resolve()
-    else:
-        path = path.resolve()
+    path = (project_root() / path).resolve() if not path.is_absolute() else path.resolve()
     try:
         path.relative_to(project_root())
     except ValueError:

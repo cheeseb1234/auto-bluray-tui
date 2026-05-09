@@ -112,7 +112,7 @@ def build_validation(model: dict[str, Any], project_dir: Path | None) -> tuple[l
 
 
 def make_preview(model_path: Path, output: Path, project_dir: Path | None) -> None:
-    model = json.loads(model_path.read_text())
+    model = json.loads(model_path.read_text(encoding='utf-8'))
     base = model_path.parent
     validation_lines, validation_summary = build_validation(model, project_dir)
     asset_root = Path('.')
@@ -293,7 +293,7 @@ render();
 </body>
 </html>
 """
-    output.write_text(html_doc)
+    output.write_text(html_doc, encoding='utf-8')
 
 
 def main() -> None:

@@ -1,23 +1,27 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import difflib, json, re, shutil, subprocess, sys, tempfile, zipfile, xml.etree.ElementTree as ET
-import os, webbrowser
+import difflib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import webbrowser
+import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont
 from xml.sax.saxutils import escape as xml_escape
 
 from button_action_parser import (
     VIDEO_EXTS,
-    format_timecode,
-    infer_display_text,
-    match_key,
     parse_button_action,
     parse_timestamp,
-    relaxed_key,
-    resolve_video_target,
     split_display_action,
 )
+from PIL import Image, ImageDraw
 
 try:
     from menu_backends import analyze_menu_compatibility, write_compatibility_report
@@ -212,7 +216,7 @@ def find_video_match(label: str, videos: dict[str, str]):
     if len(subset_hits) == 1:
         return subset_hits[0], f'partial label match: "{label}" -> "{subset_hits[0]}"'
 
-    keys = [k for k in videos.keys() if k]
+    keys = [k for k in videos if k]
     scored = []
     for key in keys:
         score = max(
@@ -549,7 +553,7 @@ def generate_loop_source_videos(model, project_dir: Path, assets: Path, target=(
             '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-shortest', str(out)
         ]
         subprocess.run(cmd, check=True)
-        slide['menu_loop_video'] = str(out.relative_to(project_dir))
+        slide['menu_loop_video'] = out.relative_to(project_dir).as_posix()
     if loop_sources:
         loop_dir.mkdir(parents=True, exist_ok=True)
         (loop_dir / 'source-videos.json').write_text(json.dumps(sorted(loop_sources), indent=2) + '\n')

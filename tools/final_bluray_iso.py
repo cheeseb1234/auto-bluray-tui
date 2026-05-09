@@ -16,7 +16,6 @@ from menu_backends import (
     convert_pptx_menu,
 )
 
-
 DISC_CAPACITY_BYTES = {
     'dvd5': 4_700_000_000,
     'dvd9': 8_500_000_000,
@@ -51,7 +50,7 @@ def ffprobe(path: Path):
         'ffprobe', '-hide_banner', '-v', 'error',
         '-show_entries', 'format=duration,size,bit_rate:stream=codec_type,codec_name,width,height,sample_rate',
         '-of', 'json', str(path),
-    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+    ], capture_output=True, text=True, check=True)
     return json.loads(result.stdout)
 
 
@@ -217,14 +216,14 @@ def make_iso(mkisofs_cmd: list[Path|str], disc_root: Path, iso_path: Path, volum
     cmd = [*mkisofs_cmd, '-iso-level', '3', '-udf', '-volid', sanitize_volume_id(volume_id), '-o', iso_path, disc_root]
     try:
         run(cmd)
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as exc:
         if iso_path.exists():
             iso_path.unlink()
         raise SystemExit(
             'Failed to create a UDF Blu-ray image. Refusing to fall back to plain ISO9660/Rock Ridge, '
             'because that can burn successfully but fail as a Blu-ray disc. Install a UDF-capable '
             'mkisofs/genisoimage/cdrtools package and rerun.'
-        )
+        ) from exc
 
 
 def install_menu_backend(root: Path, project: Path, menu_dir: Path, model: dict, selected_backend: str, disc_root: Path, output_root: Path):
