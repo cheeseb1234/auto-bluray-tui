@@ -618,7 +618,9 @@ class MenuBackendCompatibilityTests(unittest.TestCase):
             self.assertEqual(report['schema_version'], 'auto-bluray-hdmv-validation-report-v1')
             tools = {row['tool']: row for row in report['commands']}
             self.assertIn('mobj_dump', tools)
-            self.assertTrue(any(cmd['tool'] == 'movieobject_jar' and cmd['available'] for cmd in report['commands']))
+            self.assertIn('movieobject_jar', tools)
+            expected_movieobject_jar = (root / 'DiscCreationTools' / 'movieobject' / 'dist' / 'movieobject.jar').exists()
+            self.assertEqual(tools['movieobject_jar']['available'], expected_movieobject_jar)
             self.assertTrue(str(disc_root) in ' '.join(tools['index_dump']['argv']))
 
     def test_hdmv_validation_runbook_marks_missing_vs_available_commands(self):
@@ -722,8 +724,11 @@ class MenuBackendCompatibilityTests(unittest.TestCase):
             self.assertEqual(movieobject_plan['compiler_status'], 'compiled_with_fallbacks')
             self.assertEqual(validation_report['schema_version'], 'auto-bluray-hdmv-validation-report-v1')
             self.assertEqual(validation_run['schema_version'], 'auto-bluray-hdmv-validation-run-v1')
-            self.assertGreaterEqual(validation_run['command_count'], 2)
-            self.assertGreaterEqual(validation_run['passed_count'], 2)
+            available_validation_commands = sum(1 for cmd in validation_report['commands'] if cmd['available'])
+            self.assertEqual(validation_run['command_count'], len(validation_report['commands']))
+            self.assertEqual(validation_run['executed_count'], available_validation_commands)
+            self.assertEqual(validation_run['skipped_count'], len(validation_report['commands']) - available_validation_commands)
+            self.assertEqual(validation_run['passed_count'] + validation_run['failed_count'], validation_run['executed_count'])
             self.assertEqual(data['titles'][0]['playlist_id'], '00001')
             self.assertEqual(data['menus'][0]['buttons'][0]['state_assets']['selected'], 'assets/slide1_Play_selected.png')
             self.assertEqual(ig_plan['pages'][0]['buttons'][0]['visual_state_refs']['selected'], 'slide1:Play:selected')
