@@ -1,10 +1,14 @@
 # Auto Blu-ray TUI v0.2 roadmap
 
+## Status
+
+`docs/merged-codex-work-plan.md` is now the detailed execution plan for the project.
+
+Use this file as the short public roadmap and decision summary. Use the merged plan for phase-by-phase implementation order, acceptance criteria, and Codex prompts.
+
 ## Product stance
 
-v0.2 should optimize for **a reliable, practical Blu-ray authoring workflow**, not for maximum backend experimentation.
-
-### Working promise
+Auto Blu-ray TUI should optimize for a **reliable, practical Blu-ray authoring workflow**.
 
 Given:
 
@@ -21,115 +25,126 @@ Auto Blu-ray TUI should reliably:
 5. build a final ISO
 6. optionally burn it
 
+The shipping backend remains **BD-J / GRIN**.
+
+HDMV remains **experimental** until a functional static-menu compiler path is proven on real playback targets.
+
 ## Strategic decisions
 
 ### Keep and strengthen
 
+- PowerPoint-first authoring workflow
 - backend-neutral `menu-model.json`
 - BD-J / GRIN as the shipping backend
-- PowerPoint-first authoring workflow
-- explicit compatibility reporting for future HDMV work
+- menu compatibility reporting for future HDMV work
+- packaged app workflow
+- `--doctor` diagnostics
+- resumable / visible TUI behavior
 
 ### Freeze for now
 
-Treat HDMV as **research/export mode**, not as a shipping backend.
+Keep HDMV as research/export/scaffold work:
 
-That means:
+- keep HDMV IR/package export
+- keep HDMV compatibility analysis
+- keep HDMV validation notes/runbooks
+- keep HDMV-Lite scaffolding
 
-- keep HDMV IR/package export work
-- keep compatibility analysis
-- keep validation runbooks
-- do **not** market HDMV as a working final menu path yet
+Do not yet:
 
-## v0.2 priorities
+- default to HDMV
+- claim Java-free menus are production-ready
+- chase HDMV parity before the core BD-J workflow is stable
 
-### P0 — release/runtime reliability
+### Avoid for now
 
-1. **Packaged app works without Python hand-fixing**
-   - helper shell scripts must use the packaged Python runtime
-   - bundled Python dependencies such as `requests` must be available end-to-end
+- UHD Blu-ray scope
+- major menu DSL expansion before stability
+- platform dependency mysteries hidden from the user
+- giant rewrites that make the existing BD-J path regress
 
-2. **Actionable dependency diagnostics**
-   - `--doctor` on packaged builds
-   - clear macOS fixes for Java, `xorriso`, and `tsMuxer`
-   - detect Apple's `/usr/bin/java` stub correctly
+## Master priority order
 
-3. **Early TUI preflight warnings**
-   - warn before starting work if `tsMuxer` is missing
-   - warn before burning if `xorriso` is missing
-   - flag `requests` availability when OpenSubtitles fetching is enabled
+1. **P0 — Release/runtime reliability**
+   - packaged app works without Python hand-fixing
+   - actionable dependency diagnostics
+   - early TUI preflight warnings
+   - packaged smoke tests
+2. **P1 — Known-good authoring path**
+   - demo project / known-good fixtures
+   - CI smoke build path
+   - clearer failure messages
+3. **P2 — Existing media tools first**
+   - make `ffprobe`, `ffmpeg`, `tsMuxer`, ISO tools, and playback validators the bounded engines
+   - add structured wrappers, reports, planning, validation, and tests before deeper workflow rewrites
+4. **P3 — Architecture cleanup**
+   - move toward a real Python package under `src/auto_bluray_tui`
+   - split the giant monitor/workflow code without regressing behavior
+5. **P4 — User-facing disc quality**
+   - better navigation, setup menus, reports, and player compatibility notes
+6. **P5 — HDMV Gate 1**
+   - only after the stable BD-J path is solid
 
-4. **Packaged-release smoke tests**
-   - `auto-bluray-tui --help`
-   - `auto-bluray-tui --doctor`
-   - at least one non-interactive project analysis smoke test where practical
+## Near-term execution phases
 
-### P1 — known-good authoring path
+The detailed plan lives in `docs/merged-codex-work-plan.md`. The immediate sequence is:
 
-1. **Golden demo project**
-   - tiny sample project committed or generated
-   - known-good expected ISO/report outputs
+1. **Phase 1 — CI and Release Safety**
+   - add normal GitHub Actions CI for tests
+   - make release workflow depend on passing tests
+   - add lint/tooling baseline
+2. **Phase 2 — Public Polish and Versioning**
+   - remove personal/local paths
+   - centralize versioning
+3. **Phase 3 — Dependency Diagnostics and Platform Hardening**
+   - unify dependency checks
+   - classify dependencies by workflow stage
+   - make tsMuxer detection architecture-aware
+4. **Phase 4 — P0 Packaged Runtime Reliability**
+   - ensure helper scripts use packaged Python
+   - improve `--doctor`
+   - add early TUI preflight warnings
+5. **Phase 5 — Known-Good Authoring Path**
+   - add demo project generator
+   - add smoke build coverage
+   - add known-good report expectations
+6. **Phase 5B — Existing Media Tools First**
+   - add ffprobe media model
+   - add compatibility reports
+   - add copy/remux/transcode planning
+   - centralize FFmpeg/tsMuxer wrappers and validation
 
-2. **Demo smoke build in CI**
-   - menu conversion
-   - media analysis
-   - authoring plan generation
-   - BD-J menu build
+## HDMV Gate 1
 
-3. **Error-message cleanup**
-   - common failure points should name the failing tool and exact remediation
-   - avoid misleading “found but broken” wording when the runtime is actually missing
+HDMV should only move back into active development after the stable BD-J path is strong.
 
-### P2 — user-facing disc authoring quality
-
-1. button focus override / navigation hints
-2. default selected button
-3. setup menu for subtitle/audio/version variants
-4. stronger compatibility matrix and player notes
-5. better final report / troubleshooting output
-
-## HDMV plan for later
-
-HDMV should only move back into active development after a minimal proof target is met.
-
-### HDMV Gate 1
-
-Produce one **static** playable menu disc that can:
+The first real HDMV milestone is one static playable menu disc that can:
 
 - open main menu
 - choose between two titles
 - jump to a title
 - return to main menu
 
-And verify it in:
+Validation target:
 
 - libbluray tooling
 - at least one real standalone player
 
-### Defer until after Gate 1
+Until that works, BD-J remains the shipping backend and HDMV stays gated.
 
-- timestamps/chapter jumps
-- resume/replay behavior
-- motion menus
-- advanced button state behavior beyond static needs
-- broader command compiler ambition
-- UHD Blu-ray scope
+## Definition of done
 
-## What v0.2 should not try to do
+The merged plan is successful when:
 
-- full HDMV parity with BD-J
-- UHD Blu-ray authoring
-- complicated menu DSL expansion before the core workflow is stable
-- platform-specific dependency mysteries hidden from the user
-
-## Definition of done for v0.2
-
-A reasonable new user on macOS or Linux can:
-
-1. run the packaged app
-2. run `--doctor` and understand what is missing
-3. fix dependencies with exact commands
-4. launch the TUI
-5. build a BD-J-backed Blu-ray ISO from a normal project folder
-
-without manually debugging Python packaging or hidden helper-runtime issues.
+- release artifacts still build
+- normal CI runs unit tests on Linux, macOS, and Windows
+- release artifacts are not published if tests fail
+- `auto-bluray-tui --doctor` works on target platforms
+- public docs/scripts contain no personal paths
+- versioning is centralized
+- core Python modules migrate under `src/auto_bluray_tui`
+- media metadata/planning/validation are structured and tested
+- workflow orchestration is mostly Python instead of generated Bash
+- TUI behavior remains intact
+- BD-J stays the shipping backend
+- HDMV stays gated until static playback is proven

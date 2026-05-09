@@ -1,3 +1,5 @@
+> Historical HDMV-specific planning note. The current authoritative merged execution plan is `docs/merged-codex-work-plan.md`. HDMV remains gated behind the later HDMV proof milestone described there.
+
 Roadmap
 v0.1	Keep BD-J only. Stabilize current workflow. Add compatibility matrix.
 v0.2	Refactor PowerPoint extraction into neutral menu-model JSON.

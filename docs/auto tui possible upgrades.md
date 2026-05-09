@@ -1,3 +1,5 @@
+> Historical idea list. The current authoritative merged execution plan is `docs/merged-codex-work-plan.md`, with `docs/roadmap-v0.2.md` as the short public roadmap.
+
 Feature	Category	sub category	notes
 Scene / chapter menu	disc menu	navigation	
 Play All / Play Selected	disc menu	navigation	
