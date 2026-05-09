@@ -1512,7 +1512,7 @@ def draw(stdscr, project: Path, root: Path):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Curses monitor for Blu-ray media preparation progress.')
-    parser.add_argument('project_dir', nargs='?', default='/home/corey/.openclaw/Bluray project')
+    parser.add_argument('project_dir', help='path to the Blu-ray project directory')
     parser.add_argument('--once', action='store_true', help='print a noninteractive status snapshot')
     args = parser.parse_args(argv)
     project = Path(args.project_dir).resolve()
