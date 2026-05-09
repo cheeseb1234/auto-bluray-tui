@@ -19,6 +19,8 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from auto_bluray_tui_version import __version__
+
 APP_NAME = "Auto Blu-ray TUI"
 MIN_PYTHON = (3, 10)
 REQUIRED_TOOLS = ("java", "ffmpeg")
@@ -361,6 +363,7 @@ def run_embedded_helper(script_path: Path, helper_args: Sequence[str]) -> int:
 def _doctor_lines() -> list[str]:
     lines = [
         f"{APP_NAME} doctor",
+        f"Version: {__version__}",
         f"OS: {platform.system()} ({platform.platform()})",
         f"Architecture: {platform.machine()}",
         f"App root: {project_root()}",

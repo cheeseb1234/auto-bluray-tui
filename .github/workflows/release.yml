@@ -33,6 +33,26 @@ jobs:
         run: python -m compileall start.py install.py tools tests
         shell: bash
 
+      - name: Verify tag matches centralized version
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          from auto_bluray_tui_version import __version__
+
+          ref_name = os.environ.get("GITHUB_REF_NAME", "")
+          match = re.fullmatch(r"v(.+)", ref_name)
+          if not match:
+              raise SystemExit(f"Expected tag ref like vX.Y.Z, got: {ref_name!r}")
+          tag_version = match.group(1)
+          if tag_version != __version__:
+              raise SystemExit(
+                  f"Tag/version mismatch: tag {ref_name!r} does not match centralized version {__version__!r}"
+              )
+          print(f"Tag/version match OK: {ref_name} == {__version__}")
+          PY
+        shell: bash
+
       - name: Run Ruff
         run: python -m ruff check start.py install.py tools tests
         shell: bash

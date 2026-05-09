@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest import mock
 
 import start
+from auto_bluray_tui_version import __version__
 
 
 class StartLauncherTests(unittest.TestCase):
@@ -66,6 +67,23 @@ class StartLauncherTests(unittest.TestCase):
             rc = start.main(['tools/opensubtitles_fetch.py', '/tmp/project'])
         self.assertEqual(rc, 0)
         run_helper.assert_called_once_with(helper, ['/tmp/project'])
+
+    def test_doctor_includes_centralized_version(self):
+        out = StringIO()
+
+        def fake_check_tool(name):
+            return Path(f'/tmp/{name}'), f'{name} ok'
+
+        def fake_check_optional(name):
+            return Path(f'/tmp/{name}'), f'{name} ok'
+
+        with mock.patch.object(start, 'check_tool', side_effect=fake_check_tool), \
+             mock.patch.object(start, 'check_optional_tool', side_effect=fake_check_optional), \
+             mock.patch.object(start.importlib.util, 'find_spec', return_value=None), \
+             mock.patch('sys.stdout', out):
+            rc = start.print_doctor()
+        self.assertEqual(rc, 0)
+        self.assertIn(f'Version: {__version__}', out.getvalue())
 
     def test_doctor_mentions_requests_and_tsmuxer_alias_help(self):
         out = StringIO()
