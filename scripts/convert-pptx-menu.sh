@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
-PROJECT_DIR="${1:-/home/corey/.openclaw/Bluray project}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ $# -lt 1 ]]; then
+  echo "Usage: $0 /path/to/Blu-ray project" >&2
+  exit 2
+fi
+PROJECT_DIR="$1"
 PYTHON_BIN="${AUTO_BLURAY_PYTHON:-python3}"
 if [[ ! -f "$ROOT/user.vars.properties" ]]; then
   cat > "$ROOT/user.vars.properties" <<EOF

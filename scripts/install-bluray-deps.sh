@@ -154,6 +154,6 @@ cat <<EOF
 
 Next:
   cd "$ROOT"
-  ./scripts/monitor-bluray-project.sh "/home/corey/.openclaw/Bluray project"
+  ./scripts/monitor-bluray-project.sh "/path/to/Blu-ray project"
 
 EOF

@@ -967,7 +967,7 @@ Generated from:
 Edit the PowerPoint, then rerun:
 
 ```bash
-./scripts/convert-pptx-menu.sh "/home/corey/.openclaw/Bluray project"
+./scripts/convert-pptx-menu.sh "/path/to/Blu-ray project"
 ```
 
 Preview:

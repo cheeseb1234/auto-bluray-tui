@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -45,6 +46,29 @@ class TuiMonitorDiagnosticsTests(unittest.TestCase):
         self.assertEqual(len(matching), 1)
         self.assertEqual(matching[0]['severity'], 'error')
         self.assertIn('python3 -m pip install --user requests', matching[0]['fix'])
+
+    def test_main_requires_explicit_project_path(self):
+        with self.assertRaises(SystemExit) as caught:
+            bluray_tui_monitor.main([])
+
+        self.assertEqual(caught.exception.code, 2)
+
+    def test_main_accepts_explicit_project_path_for_once_mode(self):
+        project = self._project_with_video()
+        fake_rows = [{'name': 'Main Feature.mp4'}]
+        fake_meta = {'ok': True}
+
+        with mock.patch.object(bluray_tui_monitor, 'collect', return_value=(fake_rows, fake_meta)) as mocked_collect, \
+             mock.patch('sys.stdout.write') as mocked_write:
+            rc = bluray_tui_monitor.main([str(project), '--once'])
+
+        self.assertEqual(rc, 0)
+        mocked_collect.assert_called_once()
+        written = ''.join(call.args[0] for call in mocked_write.call_args_list)
+        payload = json.loads(written)
+        self.assertEqual(payload['project'], str(project.resolve()))
+        self.assertEqual(payload['meta'], fake_meta)
+        self.assertEqual(payload['videos'], fake_rows)
 
 
 if __name__ == '__main__':
