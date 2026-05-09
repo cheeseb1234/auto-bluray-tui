@@ -2,36 +2,37 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 from unittest import mock
 
-import sys
 from PIL import Image
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 
 from menu_backends import (
-    BdjMenuBackend,
     DEFAULT_MENU_BACKEND,
     HDMV_COMPILER_STATUS,
+    BdjMenuBackend,
     HdmvMenuBackend,
     MenuBackendError,
     analyze_menu_compatibility,
+    build_hdmv_ig_plan,
+    build_hdmv_lite_model,
     build_hdmv_validation_report,
     build_hdmv_validation_runbook,
     compile_hdmv_ig_assembly,
     compile_hdmv_ig_packet_container,
+    compile_hdmv_ig_tables,
     compile_hdmv_movieobject_commands,
     compile_hdmv_movieobject_plan,
     materialize_hdmv_ig_binary_scaffold,
     materialize_hdmv_ig_packet_container,
     pack_hdmv_ig_binary_scaffold,
     run_hdmv_validation_checks,
-    compile_hdmv_ig_tables,
-    build_hdmv_ig_plan,
-    build_hdmv_lite_model,
     select_backend,
     write_compatibility_report,
 )

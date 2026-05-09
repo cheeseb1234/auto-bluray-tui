@@ -7,15 +7,17 @@ can grow from today's GRIN/BD-J implementation toward HDMV-Lite.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
 import subprocess
 import zipfile
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from xml.sax.saxutils import escape
 
 from PIL import Image, ImageDraw
@@ -642,7 +644,6 @@ def compile_hdmv_ig_assembly(ig_tables: dict[str, Any]) -> dict[str, Any]:
 
     object_indexes = {row.get('object_index') for row in object_table}
     object_rows_by_index = {row.get('object_index'): row for row in object_table}
-    page_indexes = {row.get('page_index') for row in page_table}
     button_keys = {(row.get('page_index'), row.get('button_index')) for row in button_table}
     errors: list[dict[str, Any]] = []
 
@@ -1588,7 +1589,6 @@ def build_hdmv_validation_report(*, root: Path, disc_root: Path, package_dir: Pa
         'index_xml': str(package_dir / 'index.xml'),
         'index_bdmv': str(disc_root / 'BDMV' / 'index.bdmv'),
         'movieobject_xml': str(package_dir / 'MovieObject.xml'),
-        'movieobject_bdmv': str(disc_root / 'BDMV' / 'MovieObject.bdmv'),
     }
     commands = []
     for name, meta in tools.items():
@@ -1708,10 +1708,8 @@ def _write_hdmv_validation_report(path: Path, *, root: Path, disc_root: Path, pa
 
 def _write_hdmv_validation_runbook(path: Path, report: dict[str, Any]):
     path.write_text(build_hdmv_validation_runbook(report), encoding='utf-8')
-    try:
+    with contextlib.suppress(OSError):
         path.chmod(path.stat().st_mode | 0o111)
-    except OSError:
-        pass
 
 
 def _write_hdmv_validation_run(path: Path, report: dict[str, Any]):

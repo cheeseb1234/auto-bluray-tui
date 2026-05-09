@@ -19,10 +19,9 @@ import platform
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Sequence
-
 
 LOGGER = logging.getLogger(__name__)
 
@@ -190,7 +189,7 @@ class WindowsBurnStrategy(BurnStrategy):
         if path_hit:
             yield Path(path_hit)
 
-        env_roots = [os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)")]
+        env_roots = [os.environ.get("PROGRAMFILES"), os.environ.get("PROGRAMFILES(X86)")]
         for root in env_roots:
             if root:
                 yield Path(root) / "ImgBurn" / "ImgBurn.exe"
@@ -207,7 +206,7 @@ class WindowsBurnStrategy(BurnStrategy):
         return None
 
     def _isoburn(self) -> Path | None:
-        windir = os.environ.get("WINDIR") or os.environ.get("SystemRoot")
+        windir = os.environ.get("WINDIR") or os.environ.get("SYSTEMROOT")
         candidates: list[Path] = []
         hit = shutil.which("isoburn.exe")
         if hit:

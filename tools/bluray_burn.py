@@ -2,13 +2,11 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
-import os
 import re
 import shutil
 import subprocess
-import sys
-import time
 from pathlib import Path
 
 SECTOR_SIZE = 2048
@@ -28,14 +26,10 @@ def detect_burners():
         name = dev.name
         vendor = ''
         model = ''
-        try:
+        with contextlib.suppress(Exception):
             vendor = (Path('/sys/block') / name / 'device/vendor').read_text(errors='ignore').strip()
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             model = (Path('/sys/block') / name / 'device/model').read_text(errors='ignore').strip()
-        except Exception:
-            pass
         burners.append({'device': str(dev), 'label': ' '.join(x for x in (vendor, model) if x).strip() or name})
     return burners
 

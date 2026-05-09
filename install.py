@@ -8,9 +8,8 @@ import platform
 import shutil
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
-
 
 APP_NAME = "Auto Blu-ray TUI"
 WINDOWS_FFMPEG_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"

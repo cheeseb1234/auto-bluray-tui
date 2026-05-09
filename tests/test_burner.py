@@ -52,7 +52,6 @@ class BurnerStrategyTests(unittest.TestCase):
 
     def test_windows_isoburn_fallback_warns_and_uses_quiet_command(self):
         strategy = WindowsBurnStrategy(preferred_drive="F:")
-        isoburn = Path(r"C:\Windows\System32\isoburn.exe")
         env = {"WINDIR": r"C:\Windows"}
         with tempfile.NamedTemporaryFile(suffix=".iso") as iso, \
             mock.patch.dict(os.environ, env, clear=True), \

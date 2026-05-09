@@ -1,9 +1,9 @@
+import subprocess
 import tempfile
 import unittest
 from io import StringIO
 from pathlib import Path
 from unittest import mock
-import subprocess
 
 import start
 
@@ -47,9 +47,9 @@ class StartLauncherTests(unittest.TestCase):
 
         with mock.patch.object(start.platform, 'system', return_value='Darwin'), \
              mock.patch.object(start, '_java_candidates', return_value=[stub]), \
-             mock.patch.object(start, 'capture_command', side_effect=fake_capture):
-            with self.assertRaises(start.LauncherError) as caught:
-                start.find_java_executable()
+             mock.patch.object(start, 'capture_command', side_effect=fake_capture), \
+             self.assertRaises(start.LauncherError) as caught:
+            start.find_java_executable()
         self.assertIn('Java is not installed', str(caught.exception))
         self.assertIn('temurin@17', str(caught.exception))
 

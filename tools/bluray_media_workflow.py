@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import argparse, json, os, shlex, subprocess, sys, time
+import argparse
+import json
+import shlex
+import subprocess
+import time
 from pathlib import Path
 
 VIDEO_EXTS={'.mkv','.mp4','.m2ts','.mov'}
@@ -55,7 +59,7 @@ def max_total_bitrate_for_options(expected_options: dict) -> int:
 
 
 def run(cmd):
-    return subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout
+    return subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
 
 
 def ffprobe(path: Path):
@@ -229,7 +233,7 @@ def ffmpeg_cmd(project: Path, item: dict, output_root: Path, seconds: int|None=N
 
 def nvidia_status():
     try:
-        smi=subprocess.run(['nvidia-smi','--query-gpu=name,driver_version,memory.total','--format=csv,noheader'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
+        smi=subprocess.run(['nvidia-smi','--query-gpu=name,driver_version,memory.total','--format=csv,noheader'], capture_output=True, text=True, timeout=5)
         enc=subprocess.run(['ffmpeg','-hide_banner','-encoders'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=10)
         return {
             'nvidia_smi': smi.stdout.strip() if smi.returncode == 0 else None,

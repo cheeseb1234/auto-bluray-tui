@@ -1,23 +1,27 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import difflib, json, re, shutil, subprocess, sys, tempfile, zipfile, xml.etree.ElementTree as ET
-import os, webbrowser
+import difflib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import webbrowser
+import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont
 from xml.sax.saxutils import escape as xml_escape
 
 from button_action_parser import (
     VIDEO_EXTS,
-    format_timecode,
-    infer_display_text,
-    match_key,
     parse_button_action,
     parse_timestamp,
-    relaxed_key,
-    resolve_video_target,
     split_display_action,
 )
+from PIL import Image, ImageDraw
 
 try:
     from menu_backends import analyze_menu_compatibility, write_compatibility_report
@@ -212,7 +216,7 @@ def find_video_match(label: str, videos: dict[str, str]):
     if len(subset_hits) == 1:
         return subset_hits[0], f'partial label match: "{label}" -> "{subset_hits[0]}"'
 
-    keys = [k for k in videos.keys() if k]
+    keys = [k for k in videos if k]
     scored = []
     for key in keys:
         score = max(

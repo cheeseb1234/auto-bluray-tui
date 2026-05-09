@@ -67,10 +67,7 @@ def parse_timestamp(value: str) -> tuple[int | None, str | None]:
     nums = [int(p) for p in parts]
     if any(n >= 60 for n in nums[-2:]):
         return None, None
-    if len(nums) == 2:
-        seconds = nums[0] * 60 + nums[1]
-    else:
-        seconds = nums[0] * 3600 + nums[1] * 60 + nums[2]
+    seconds = nums[0] * 60 + nums[1] if len(nums) == 2 else nums[0] * 3600 + nums[1] * 60 + nums[2]
     return seconds, format_timecode(seconds)
 
 
