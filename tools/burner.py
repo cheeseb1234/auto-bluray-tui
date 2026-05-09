@@ -21,7 +21,7 @@ import subprocess
 import sys
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 LOGGER = logging.getLogger(__name__)
 
@@ -97,8 +97,8 @@ class LinuxBurnStrategy(BurnStrategy):
     def _burn_command(self) -> str | None:
         return shutil.which("wodim") or shutil.which("cdrecord")
 
-    def _linux_drive_label(self, dev: Path) -> str:
-        name = dev.name
+    def _linux_drive_label(self, dev: str) -> str:
+        name = PurePosixPath(dev).name
         parts: list[str] = []
         for field in ("vendor", "model"):
             try:
@@ -111,18 +111,17 @@ class LinuxBurnStrategy(BurnStrategy):
 
     def detect_drive(self) -> Drive | None:
         if self.preferred_drive:
-            preferred = Path(self.preferred_drive)
-            return Drive(str(preferred), self._linux_drive_label(preferred), self.name)
+            return Drive(self.preferred_drive, self._linux_drive_label(self.preferred_drive), self.name)
 
         candidates = sorted(Path("/dev").glob("sr*"))
         if not candidates:
             # Requirement default: target /dev/sr0. Return it as a best guess so
             # callers get a clear burn-command failure instead of no-op silence.
-            fallback = Path("/dev/sr0")
-            return Drive(str(fallback), "default optical drive", self.name)
+            fallback = "/dev/sr0"
+            return Drive(fallback, "default optical drive", self.name)
 
-        dev = candidates[0]
-        return Drive(str(dev), self._linux_drive_label(dev), self.name)
+        dev = str(candidates[0])
+        return Drive(dev, self._linux_drive_label(dev), self.name)
 
     def burn_iso(self, iso_path: Path) -> bool:
         burner = self._burn_command()

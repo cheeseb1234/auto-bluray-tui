@@ -553,7 +553,7 @@ def generate_loop_source_videos(model, project_dir: Path, assets: Path, target=(
             '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-shortest', str(out)
         ]
         subprocess.run(cmd, check=True)
-        slide['menu_loop_video'] = str(out.relative_to(project_dir))
+        slide['menu_loop_video'] = out.relative_to(project_dir).as_posix()
     if loop_sources:
         loop_dir.mkdir(parents=True, exist_ok=True)
         (loop_dir / 'source-videos.json').write_text(json.dumps(sorted(loop_sources), indent=2) + '\n')

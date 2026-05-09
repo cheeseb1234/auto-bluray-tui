@@ -1219,8 +1219,8 @@ def generate_hdmv_button_state_assets(hdmv_model: dict[str, Any], package_dir: P
                 'activated': f'{menu_id}:{button_id}:activated',
             }
             button['state_assets'] = {
-                'selected': str(selected_rel),
-                'activated': str(activated_rel),
+                'selected': selected_rel.as_posix(),
+                'activated': activated_rel.as_posix(),
             }
 
 
@@ -1772,7 +1772,7 @@ class HdmvMenuBackend(MenuBackend):
                 dst = assets_dir / Path(background_file).name
                 if src.exists():
                     shutil.copy2(src, dst)
-                background['package_file'] = str(dst.relative_to(package_dir))
+                background['package_file'] = dst.relative_to(package_dir).as_posix()
 
         generate_hdmv_button_state_assets(hdmv_model, package_dir)
 

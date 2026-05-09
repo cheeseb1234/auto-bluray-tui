@@ -12,8 +12,9 @@ class StartLauncherTests(unittest.TestCase):
     def test_embedded_helper_resolution_stays_inside_project_root(self):
         helper = start._resolve_embedded_helper('tools/opensubtitles_fetch.py')
         self.assertIsNotNone(helper)
-        self.assertTrue(str(helper).endswith('tools/opensubtitles_fetch.py'))
-        self.assertIsNone(start._resolve_embedded_helper('/tmp/outside.py'))
+        self.assertEqual(helper.parts[-2:], ('tools', 'opensubtitles_fetch.py'))
+        outside = (start.project_root().parent / 'outside.py').resolve()
+        self.assertIsNone(start._resolve_embedded_helper(str(outside)))
 
     def test_run_tui_in_process_passes_project_and_args(self):
         with tempfile.TemporaryDirectory() as tmp:

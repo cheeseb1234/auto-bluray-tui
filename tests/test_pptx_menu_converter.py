@@ -77,10 +77,10 @@ class PptxMenuConverterHeuristicTests(unittest.TestCase):
                 'videos': {'movie.mp4': 'movie.mp4'},
                 'coordinate_spaces': {'rendered_px': {'width': 1920, 'height': 1080}},
             }
-            model_path.write_text(json.dumps(model))
+            model_path.write_text(json.dumps(model), encoding='utf-8')
 
             make_preview(model_path, output, project_dir)
-            html = output.read_text()
+            html = output.read_text(encoding='utf-8')
             self.assertIn('"assetRoot": "../xlets/grin_samples/Scripts/PptxMenu"', html)
 
 
