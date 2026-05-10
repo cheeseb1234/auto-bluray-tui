@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import os
 import platform
 import shutil
@@ -15,6 +16,11 @@ APP_NAME = "Auto Blu-ray TUI"
 WINDOWS_FFMPEG_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
 WINDOWS_JAVA_URL = "https://learn.microsoft.com/java/openjdk/download"
 HOMEBREW_INSTALL_URL = "https://brew.sh/"
+SYSTEM_DEPENDENCY_PROBES: dict[str, dict[str, tuple[str, ...]]] = {
+    "Linux": {"required": ("java", "ffmpeg"), "optional": ()},
+    "Darwin": {"required": ("java", "ffmpeg", "xorriso"), "optional": ("tsMuxer",)},
+    "Windows": {"required": ("java", "ffmpeg"), "optional": ()},
+}
 
 
 class InstallerError(RuntimeError):
@@ -43,6 +49,51 @@ def warn(message: str) -> None:
 
 def command_exists(name: str) -> bool:
     return shutil.which(name) is not None
+
+
+def ensure_tools_import_path() -> None:
+    tools = root_dir() / "tools"
+    tools_str = str(tools)
+    if tools_str not in sys.path:
+        sys.path.insert(0, tools_str)
+
+
+def _dependency_checks():
+    ensure_tools_import_path()
+    return importlib.import_module("dependency_checks")
+
+
+def system_dependency_report(system_name: str) -> tuple[list[str], list[str]]:
+    config = SYSTEM_DEPENDENCY_PROBES.get(system_name, {"required": (), "optional": ()})
+    deps = _dependency_checks()
+    missing: list[str] = []
+    lines: list[str] = []
+
+    for name in config["required"]:
+        try:
+            exe, version = deps.check_tool(name)
+            lines.append(f"- {name}: OK — {exe} — {version}")
+        except deps.DependencyError as exc:
+            missing.append(name)
+            lines.append(f"- {name}: MISSING — {exc}")
+
+    for name in config["optional"]:
+        exe, detail = deps.check_optional_tool(name)
+        if exe:
+            lines.append(f"- {name}: OK — {exe} — {detail}")
+        else:
+            lines.append(f"- {name}: MISSING — {detail}")
+
+    return missing, lines
+
+
+def print_system_dependency_report(system_name: str) -> list[str]:
+    missing, lines = system_dependency_report(system_name)
+    if lines:
+        say("System dependency probes:")
+        for line in lines:
+            print(line)
+    return missing
 
 
 def run(cmd: Sequence[str], *, check: bool = True, dry_run: bool = False, cwd: Path | None = None) -> subprocess.CompletedProcess[str] | None:
@@ -90,6 +141,12 @@ def linux_distro_hint() -> str:
 
 
 def install_linux(*, dry_run: bool, check_only: bool, use_sudo: bool) -> None:
+    if check_only:
+        missing = print_system_dependency_report("Linux")
+        if missing:
+            warn(f"Missing system tools: {', '.join(missing)}")
+        return
+
     missing = [tool for tool in ("ffmpeg", "java") if not command_exists(tool)]
     if not missing:
         say("Linux system dependencies already appear to be installed.")
@@ -118,6 +175,12 @@ def install_linux(*, dry_run: bool, check_only: bool, use_sudo: bool) -> None:
 
 
 def install_macos(*, dry_run: bool, check_only: bool) -> None:
+    if check_only:
+        missing = print_system_dependency_report("Darwin")
+        if missing:
+            warn(f"Missing system tools: {', '.join(missing)}")
+        return
+
     missing = [tool for tool in ("ffmpeg", "java", "xorriso") if not command_exists(tool)]
     if not missing:
         say("macOS system dependencies already appear to be installed.")
@@ -142,6 +205,12 @@ def install_macos(*, dry_run: bool, check_only: bool) -> None:
 
 
 def install_windows(*, dry_run: bool, check_only: bool) -> None:
+    if check_only:
+        missing = print_system_dependency_report("Windows")
+        if missing:
+            warn(f"Missing system tools: {', '.join(missing)}")
+        return
+
     missing = [tool for tool in ("ffmpeg", "java") if not command_exists(tool)]
     if not missing:
         say("Windows system dependencies already appear to be installed.")
