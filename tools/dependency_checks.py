@@ -13,6 +13,16 @@ class DependencyError(RuntimeError):
     """Raised for clean, user-facing dependency probe failures."""
 
 
+TOOL_VERSION_ARGS: dict[str, tuple[str, ...]] = {
+    "ffmpeg": ("-version",),
+    "ffprobe": ("-version",),
+    "xorriso": ("-version",),
+    "libreoffice": ("--version",),
+    "pdftoppm": ("-v",),
+    "ant": ("-version",),
+}
+
+
 def capture_command(cmd: list[str], *, timeout: int = 10) -> subprocess.CompletedProcess[str]:
     """Run a short probe command and capture output for diagnostics."""
     try:
@@ -61,6 +71,12 @@ def remediation_hint(name: str) -> str:
     system = platform.system()
     if name == "java" and system == "Darwin":
         return "brew install --cask temurin@17"
+    if name == "libreoffice" and system == "Darwin":
+        return "brew install --cask libreoffice"
+    if name == "pdftoppm" and system == "Darwin":
+        return "brew install poppler"
+    if name == "ant" and system == "Darwin":
+        return "brew install ant"
     if name == "xorriso" and system == "Darwin":
         return "brew install xorriso"
     if name == "tsMuxer" and system == "Darwin":
@@ -73,6 +89,14 @@ def remediation_hint(name: str) -> str:
         return "Install tsMuxer and ensure tsMuxer, tsMuxeR, or tsmuxer is on PATH"
     if name == "xorriso":
         return "Install xorriso/libisoburn before burning discs."
+    if name == "libreoffice":
+        return "Install LibreOffice and ensure libreoffice is on PATH."
+    if name == "pdftoppm":
+        return "Install poppler/pdftoppm and ensure pdftoppm is on PATH."
+    if name == "ant":
+        return "Install Apache Ant and ensure ant is on PATH."
+    if name == "udf-iso-creator":
+        return "Install xorriso or a mkisofs/genisoimage/xorrisofs build with UDF support."
     return ""
 
 
@@ -154,6 +178,16 @@ def find_java_executable() -> Path:
     )
 
 
+def _version_command(name: str, exe: Path) -> list[str]:
+    if name == "tsMuxer":
+        return [str(exe)]
+    return [str(exe), *TOOL_VERSION_ARGS.get(name, ("-version",))]
+
+
+def _render_command(cmd: list[str | Path]) -> str:
+    return " ".join(str(part) for part in cmd)
+
+
 def check_tool(name: str) -> tuple[Path, str]:
     exe = find_java_executable() if name == "java" else which_tool(name)
     if not exe:
@@ -165,7 +199,7 @@ def check_tool(name: str) -> tuple[Path, str]:
         }.get(system, "Install it and make sure it is on PATH.")
         raise DependencyError(f"Required dependency {name!r} was not found in PATH. {install_hint}")
 
-    result = capture_command([str(exe), "-version"])
+    result = capture_command(_version_command(name, exe))
     if result.returncode != 0:
         raise DependencyError(
             f"Dependency {name!r} was found at {exe}, but its version check failed "
@@ -183,8 +217,7 @@ def check_optional_tool(name: str, *, root: Path | None = None, prefer_local: bo
             message += f" — install with: {hint}"
         return None, message
 
-    version_cmd = [str(exe)] if name == "tsMuxer" else [str(exe), "-version"]
-    result = capture_command(version_cmd)
+    result = capture_command(_version_command(name, exe))
     if name == "tsMuxer" and (result.stdout or "").strip():
         return exe, first_output_line(result)
     if result.returncode != 0:
@@ -194,3 +227,29 @@ def check_optional_tool(name: str, *, root: Path | None = None, prefer_local: bo
             message += f" — remediation: {hint}"
         return exe, message
     return exe, first_output_line(result)
+
+
+def check_udf_iso_creator(*, root: Path | None = None, prefer_local: bool = False) -> tuple[list[str] | None, str]:
+    candidates: list[list[str]] = []
+    unsupported: list[str] = []
+
+    for name in ("mkisofs", "genisoimage", "xorrisofs"):
+        tool = which_tool(name, root=root, prefer_local=prefer_local)
+        if tool:
+            candidates.append([str(tool)])
+
+    xorriso = which_tool("xorriso", root=root, prefer_local=prefer_local)
+    if xorriso:
+        candidates.append([str(xorriso), "-as", "mkisofs"])
+
+    for cmd in candidates:
+        result = capture_command([*cmd, "-help"])
+        text = (result.stdout or "").lower()
+        if "-udf" in text or "udf" in text:
+            return cmd, "supports -udf"
+        unsupported.append(_render_command(cmd))
+
+    hint = remediation_hint("udf-iso-creator")
+    if unsupported:
+        return None, f"found but not UDF-capable: {', '.join(unsupported)} — remediation: {hint}"
+    return None, f"not found — install with: {hint}"
