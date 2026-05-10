@@ -1,4 +1,3 @@
-import subprocess
 import tempfile
 import unittest
 from io import StringIO
@@ -39,17 +38,12 @@ class StartLauncherTests(unittest.TestCase):
             preflight.assert_called_once()
             fake_monitor.main.assert_called_once_with([str(Path(tmp).resolve()), "--once"])
 
-    def test_find_java_executable_reports_macos_stub_as_missing_java(self):
-        stub = Path('/usr/bin/java')
+    def test_find_java_executable_surfaces_dependency_probe_error(self):
+        fake_deps = mock.Mock()
+        fake_deps.DependencyError = RuntimeError
+        fake_deps.find_java_executable.side_effect = RuntimeError('Java is not installed. Install temurin@17.')
 
-        def fake_capture(cmd, timeout=10):
-            if cmd[0] == str(stub):
-                return subprocess.CompletedProcess(cmd, 1, stdout='The operation couldn\'t be completed. Unable to locate a Java Runtime.\n')
-            raise AssertionError(f'unexpected command: {cmd}')
-
-        with mock.patch.object(start.platform, 'system', return_value='Darwin'), \
-             mock.patch.object(start, '_java_candidates', return_value=[stub]), \
-             mock.patch.object(start, 'capture_command', side_effect=fake_capture), \
+        with mock.patch.object(start, '_dependency_checks', return_value=fake_deps), \
              self.assertRaises(start.LauncherError) as caught:
             start.find_java_executable()
         self.assertIn('Java is not installed', str(caught.exception))
@@ -79,7 +73,7 @@ class StartLauncherTests(unittest.TestCase):
 
         with mock.patch.object(start, 'check_tool', side_effect=fake_check_tool), \
              mock.patch.object(start, 'check_optional_tool', side_effect=fake_check_optional), \
-             mock.patch.object(start.importlib.util, 'find_spec', return_value=None), \
+             mock.patch.object(start, 'requests_available', return_value=False), \
              mock.patch('sys.stdout', out):
             rc = start.print_doctor()
         self.assertEqual(rc, 0)
@@ -98,7 +92,7 @@ class StartLauncherTests(unittest.TestCase):
 
         with mock.patch.object(start, 'check_tool', side_effect=fake_check_tool), \
              mock.patch.object(start, 'check_optional_tool', side_effect=fake_check_optional), \
-             mock.patch.object(start.importlib.util, 'find_spec', return_value=None), \
+             mock.patch.object(start, 'requests_available', return_value=False), \
              mock.patch('sys.stdout', out):
             rc = start.print_doctor()
         self.assertEqual(rc, 0)
