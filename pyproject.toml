@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "auto-bluray-tui"
-version = "1.5.0"
+dynamic = ["version"]
 description = "PowerPoint-to-Blu-ray autopilot for encoding, menu authoring, ISO creation, and disc burning."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -58,8 +58,11 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 ignore = ["E501", "E701", "E702"]
 
 [tool.setuptools]
-py-modules = ["start", "install"]
+py-modules = ["start", "install", "auto_bluray_tui_version"]
 include-package-data = true
+
+[tool.setuptools.dynamic]
+version = { attr = "auto_bluray_tui_version.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["."]
