@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import contextlib
 import curses
-import importlib.util
 import json
 import os
 import re
@@ -13,6 +12,8 @@ import signal
 import subprocess
 import time
 from pathlib import Path
+
+import dependency_checks
 
 try:
     import pptx_menu_converter
@@ -42,19 +43,16 @@ SUPPORTED_VIDEO_EXTS = ('.mp4', '.mkv', '.m2ts', '.mov')
 
 
 def remediation_hint(tool_name: str):
-    if tool_name == 'tsMuxer':
-        if os.name == 'posix' and os.uname().sysname == 'Darwin':
-            return 'Install/download tsMuxer and ensure tsMuxer, tsMuxeR, or tsmuxer is on PATH.'
-        return 'Install tsMuxer and ensure tsMuxer, tsMuxeR, or tsmuxer is on PATH.'
-    if tool_name == 'xorriso':
-        if os.name == 'posix' and os.uname().sysname == 'Darwin':
-            return 'Install with Homebrew: brew install xorriso'
-        return 'Install xorriso/libisoburn before burning discs.'
-    return ''
+    hint = dependency_checks.remediation_hint(tool_name)
+    if tool_name == 'tsMuxer' and hint.startswith('Download the macOS release'):
+        return 'Install/download tsMuxer and ensure tsMuxer, tsMuxeR, or tsmuxer is on PATH.'
+    if tool_name == 'xorriso' and hint == 'brew install xorriso':
+        return 'Install with Homebrew: brew install xorriso'
+    return hint or ''
 
 
 def requests_available():
-    return importlib.util.find_spec('requests') is not None
+    return dependency_checks.requests_available()
 
 
 def find_project_pptx(project: Path):
@@ -705,17 +703,11 @@ def nvidia_summary():
 
 
 def tool_status(root: Path):
-    def find_tool(name: str):
-        local = root / 'tools' / 'bin' / name
-        if local.exists():
-            return str(local)
-        return shutil.which(name)
-
     return {
-        'ffmpeg': find_tool('ffmpeg'),
-        'ffprobe': find_tool('ffprobe'),
-        'tsMuxer': find_tool('tsMuxer') or find_tool('tsMuxeR') or find_tool('tsmuxer'),
-        'xorriso': find_tool('xorriso'),
+        'ffmpeg': str(path) if (path := dependency_checks.which_tool('ffmpeg', root=root, prefer_local=True)) else None,
+        'ffprobe': str(path) if (path := dependency_checks.which_tool('ffprobe', root=root, prefer_local=True)) else None,
+        'tsMuxer': str(path) if (path := dependency_checks.which_tool('tsMuxer', root=root, prefer_local=True)) else None,
+        'xorriso': str(path) if (path := dependency_checks.which_tool('xorriso', root=root, prefer_local=True)) else None,
         'nvidia': nvidia_summary(),
     }
 

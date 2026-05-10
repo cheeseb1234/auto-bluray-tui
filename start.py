@@ -9,11 +9,9 @@ from __future__ import annotations
 
 import argparse
 import importlib
-import importlib.util
 import os
 import platform
 import runpy
-import shutil
 import subprocess
 import sys
 from collections.abc import Sequence
@@ -71,35 +69,6 @@ def stream_command(cmd: Sequence[str], *, cwd: Path | None = None) -> int:
     return int(completed.returncode)
 
 
-def capture_command(cmd: Sequence[str], *, timeout: int = 10) -> subprocess.CompletedProcess[str]:
-    """Run a short probe command and capture output for diagnostics."""
-    try:
-        return subprocess.run(
-            list(cmd),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-            check=False,
-        )
-    except FileNotFoundError as exc:
-        raise LauncherError(f"Command not found: {cmd[0]}") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise LauncherError(f"Timed out while checking {cmd[0]!r}") from exc
-    except OSError as exc:
-        raise LauncherError(f"Failed to run {cmd[0]!r}: {exc}") from exc
-
-
-def first_output_line(result: subprocess.CompletedProcess[str]) -> str:
-    for line in (result.stdout or "").splitlines():
-        line = line.strip()
-        if line:
-            return line
-    return "no version output"
-
-
 def check_python() -> None:
     if sys.version_info < MIN_PYTHON:
         wanted = ".".join(str(part) for part in MIN_PYTHON)
@@ -107,147 +76,41 @@ def check_python() -> None:
         raise LauncherError(f"Python {wanted}+ is required; found Python {found} at {sys.executable}")
 
 
-def which_required(name: str) -> Path:
-    found = shutil.which(name)
-    if not found:
-        system = platform.system()
-        install_hint = {
-            "Windows": "Install it and make sure its bin folder is added to PATH.",
-            "Darwin": "Install it with Homebrew or another package manager, then make sure it is on PATH.",
-            "Linux": "Install it with your distro package manager, then make sure it is on PATH.",
-        }.get(system, "Install it and make sure it is on PATH.")
-        raise LauncherError(f"Required dependency {name!r} was not found in PATH. {install_hint}")
-    return Path(found)
-
-
-def _java_runtime_missing_output(text: str) -> bool:
-    normalized = (text or "").lower()
-    return "unable to locate a java runtime" in normalized or "no java runtime present" in normalized
-
-
-def _java_candidates() -> list[Path]:
-    candidates: list[Path] = []
-    seen: set[Path] = set()
-
-    def add(path: Path | None) -> None:
-        if not path:
-            return
-        try:
-            resolved = path.expanduser().resolve()
-        except OSError:
-            resolved = path.expanduser()
-        if resolved in seen:
-            return
-        seen.add(resolved)
-        candidates.append(resolved)
-
-    java_home = os.environ.get("JAVA_HOME")
-    if java_home:
-        add(Path(java_home) / "bin" / "java")
-
-    if platform.system() == "Darwin":
-        for cmd in (["/usr/libexec/java_home", "-v", "17"], ["/usr/libexec/java_home"]):
-            try:
-                result = capture_command(cmd, timeout=5)
-            except LauncherError:
-                continue
-            if result.returncode == 0:
-                home = (result.stdout or "").strip().splitlines()[0].strip()
-                if home:
-                    add(Path(home) / "bin" / "java")
-
-    found = shutil.which("java")
-    if found:
-        add(Path(found))
-
-    return [path for path in candidates if path.exists()]
+def _dependency_checks():
+    ensure_tools_import_path()
+    return importlib.import_module("dependency_checks")
 
 
 def find_java_executable() -> Path:
-    candidates = _java_candidates()
-    stub_failure: tuple[Path, str] | None = None
-    for exe in candidates:
-        result = capture_command([str(exe), "-version"])
-        if result.returncode == 0:
-            return exe
-        if platform.system() == "Darwin" and _java_runtime_missing_output(result.stdout or ""):
-            stub_failure = (exe, first_output_line(result))
-            continue
-    if stub_failure:
-        exe, detail = stub_failure
-        raise LauncherError(
-            "Java is not installed. macOS found only Apple's /usr/bin/java launcher stub"
-            f" at {exe}. Install a real JDK, for example: brew install --cask temurin@17"
-            f". Probe output: {detail}"
-        )
-    raise LauncherError(
-        "Required dependency 'java' was not found as a working runtime. "
-        "Install a real JDK and make sure java is available via JAVA_HOME, /usr/libexec/java_home, or PATH."
-    )
+    deps = _dependency_checks()
+    try:
+        return deps.find_java_executable()
+    except deps.DependencyError as exc:
+        raise LauncherError(str(exc)) from exc
 
 
 def which_tool(name: str) -> Path | None:
-    candidates = [name]
-    if name == "tsMuxer":
-        candidates = ["tsMuxer", "tsMuxeR", "tsmuxer"]
-    for candidate in candidates:
-        found = shutil.which(candidate)
-        if found:
-            return Path(found)
-    return None
+    return _dependency_checks().which_tool(name)
 
 
 def remediation_hint(name: str) -> str:
-    system = platform.system()
-    if name == "java" and system == "Darwin":
-        return "brew install --cask temurin@17"
-    if name == "xorriso" and system == "Darwin":
-        return "brew install xorriso"
-    if name == "tsMuxer" and system == "Darwin":
-        return "Download the macOS release from https://github.com/justdan96/tsMuxer/releases and place tsMuxer/tsMuxeR on PATH"
-    if name == "ffmpeg" and system == "Darwin":
-        return "brew install ffmpeg"
-    if name == "ffprobe" and system == "Darwin":
-        return "brew install ffmpeg"
-    if name == "tsMuxer":
-        return "Install tsMuxer and ensure tsMuxer, tsMuxeR, or tsmuxer is on PATH"
-    return ""
+    return _dependency_checks().remediation_hint(name)
+
+
+def requests_available() -> bool:
+    return _dependency_checks().requests_available()
 
 
 def check_tool(name: str) -> tuple[Path, str]:
-    exe = find_java_executable() if name == "java" else which_required(name)
-    # java prints version info to stderr; capture_command merges stderr into stdout.
-    version_args = [str(exe), "-version"] if name == "java" else [str(exe), "-version"]
-    result = capture_command(version_args)
-    if result.returncode != 0:
-        raise LauncherError(
-            f"Dependency {name!r} was found at {exe}, but its version check failed "
-            f"with exit code {result.returncode}: {first_output_line(result)}"
-        )
-    return exe, first_output_line(result)
+    deps = _dependency_checks()
+    try:
+        return deps.check_tool(name)
+    except deps.DependencyError as exc:
+        raise LauncherError(str(exc)) from exc
 
 
 def check_optional_tool(name: str) -> tuple[Path | None, str]:
-    exe = which_tool(name)
-    if not exe:
-        hint = remediation_hint(name)
-        message = "not found"
-        if hint:
-            message += f" — install with: {hint}"
-        return None, message
-    version_cmd = [str(exe), "-version"]
-    if name == "tsMuxer":
-        version_cmd = [str(exe)]
-    result = capture_command(version_cmd)
-    if name == "tsMuxer" and (result.stdout or "").strip():
-        return exe, first_output_line(result)
-    if result.returncode != 0:
-        hint = remediation_hint(name)
-        message = f"version check failed: {first_output_line(result)}"
-        if hint:
-            message += f" — remediation: {hint}"
-        return exe, message
-    return exe, first_output_line(result)
+    return _dependency_checks().check_optional_tool(name)
 
 
 def check_curses_available(system_name: str) -> None:
@@ -369,7 +232,7 @@ def _doctor_lines() -> list[str]:
         f"App root: {project_root()}",
         f"Launcher python: {sys.executable}",
         f"Bundled helper python: {os.environ.get('AUTO_BLURAY_PYTHON', sys.executable)}",
-        f"requests importable: {'yes' if importlib.util.find_spec('requests') else 'no'}",
+        f"requests importable: {'yes' if requests_available() else 'no'}",
         "",
         "Dependency probes:",
     ]
