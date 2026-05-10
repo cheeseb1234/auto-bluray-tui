@@ -23,6 +23,7 @@ APP_NAME = "Auto Blu-ray TUI"
 MIN_PYTHON = (3, 10)
 REQUIRED_TOOLS = ("java", "ffmpeg")
 OPTIONAL_TOOLS = ("ffprobe", "tsMuxer", "xorriso")
+DOCTOR_ONLY_OPTIONAL_TOOLS = ("libreoffice", "pdftoppm", "ant")
 
 
 class LauncherError(RuntimeError):
@@ -111,6 +112,10 @@ def check_tool(name: str) -> tuple[Path, str]:
 
 def check_optional_tool(name: str) -> tuple[Path | None, str]:
     return _dependency_checks().check_optional_tool(name)
+
+
+def check_udf_iso_creator() -> tuple[list[str] | None, str]:
+    return _dependency_checks().check_udf_iso_creator()
 
 
 def check_curses_available(system_name: str) -> None:
@@ -237,7 +242,7 @@ def _doctor_lines() -> list[str]:
         "Dependency probes:",
     ]
 
-    for name in ("java", "ffmpeg", "ffprobe", "tsMuxer", "xorriso"):
+    for name in (*REQUIRED_TOOLS, *OPTIONAL_TOOLS, *DOCTOR_ONLY_OPTIONAL_TOOLS):
         try:
             if name in REQUIRED_TOOLS:
                 exe, version = check_tool(name)
@@ -250,6 +255,12 @@ def _doctor_lines() -> list[str]:
                     lines.append(f"- {name}: MISSING — {version}")
         except LauncherError as exc:
             lines.append(f"- {name}: ERROR — {exc}")
+
+    udf_cmd, udf_detail = check_udf_iso_creator()
+    if udf_cmd:
+        lines.append(f"- udf-iso-creator: OK — {' '.join(udf_cmd)} — {udf_detail}")
+    else:
+        lines.append(f"- udf-iso-creator: MISSING — {udf_detail}")
 
     lines += ["", "PATH:", os.environ.get("PATH", "")]
     if platform.system() == "Darwin":

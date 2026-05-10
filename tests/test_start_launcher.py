@@ -100,6 +100,31 @@ class StartLauncherTests(unittest.TestCase):
         self.assertIn('requests importable: no', text)
         self.assertIn('tsMuxeR', text)
 
+    def test_doctor_includes_expanded_dependency_probe_lines(self):
+        out = StringIO()
+
+        def fake_check_tool(name):
+            return Path(f'/tmp/{name}'), f'{name} ok'
+
+        def fake_check_optional(name):
+            if name == 'pdftoppm':
+                return None, 'not found — install with: brew install poppler'
+            return Path(f'/tmp/{name}'), f'{name} ok'
+
+        with mock.patch.object(start, 'check_tool', side_effect=fake_check_tool), \
+             mock.patch.object(start, 'check_optional_tool', side_effect=fake_check_optional), \
+             mock.patch.object(start, 'check_udf_iso_creator', return_value=(['/usr/bin/xorriso', '-as', 'mkisofs'], 'supports -udf')), \
+             mock.patch.object(start, 'requests_available', return_value=True), \
+             mock.patch('sys.stdout', out):
+            rc = start.print_doctor()
+
+        self.assertEqual(rc, 0)
+        text = out.getvalue()
+        self.assertIn(f'- libreoffice: OK — {Path("/tmp/libreoffice")} — libreoffice ok', text)
+        self.assertIn('- pdftoppm: MISSING — not found — install with: brew install poppler', text)
+        self.assertIn(f'- ant: OK — {Path("/tmp/ant")} — ant ok', text)
+        self.assertIn('- udf-iso-creator: OK — /usr/bin/xorriso -as mkisofs — supports -udf', text)
+
 
 if __name__ == "__main__":
     unittest.main()
