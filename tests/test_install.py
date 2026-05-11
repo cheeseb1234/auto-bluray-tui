@@ -36,7 +36,7 @@ class InstallReportingTests(unittest.TestCase):
         fake_deps = mock.Mock()
         fake_deps.DependencyError = RuntimeError
         fake_deps.check_tool.side_effect = lambda name: (Path(f'/tmp/{name}'), f'{name} ok')
-        fake_deps.check_optional_tool.side_effect = lambda name: (None, 'not found — install with: Install tsMuxer and ensure tsMuxer, tsMuxeR, or tsmuxer is on PATH')
+        fake_deps.check_optional_tool.side_effect = lambda name: (None, 'not found — install with: Download the macOS release from https://github.com/justdan96/tsMuxer/releases and place tsMuxer/tsMuxeR on PATH')
 
         stdout = StringIO()
         stderr = StringIO()
@@ -48,7 +48,24 @@ class InstallReportingTests(unittest.TestCase):
         text = stdout.getvalue()
         self.assertIn('==> System dependency probes:', text)
         self.assertIn(f"- xorriso: OK — {Path('/tmp/xorriso')} — xorriso ok", text)
-        self.assertIn('- tsMuxer: MISSING — not found — install with: Install tsMuxer and ensure tsMuxer, tsMuxeR, or tsmuxer is on PATH', text)
+        self.assertIn('- tsMuxer: MISSING — not found — install with: Download the macOS release from https://github.com/justdan96/tsMuxer/releases and place tsMuxer/tsMuxeR on PATH', text)
+        self.assertEqual('', stderr.getvalue())
+
+    def test_macos_check_only_reports_unusable_tsmuxer_probe_message(self):
+        fake_deps = mock.Mock()
+        fake_deps.DependencyError = RuntimeError
+        fake_deps.check_tool.side_effect = lambda name: (Path(f'/tmp/{name}'), f'{name} ok')
+        fake_deps.check_optional_tool.side_effect = lambda name: (Path('/tmp/tsMuxer'), 'unusable — likely platform/architecture mismatch: Bad CPU type in executable — remediation: Download the macOS release from https://github.com/justdan96/tsMuxer/releases and place tsMuxer/tsMuxeR on PATH')
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with mock.patch.object(install, '_dependency_checks', return_value=fake_deps), \
+             mock.patch('sys.stdout', stdout), \
+             mock.patch('sys.stderr', stderr):
+            install.install_macos(dry_run=False, check_only=True)
+
+        text = stdout.getvalue()
+        self.assertIn(f'- tsMuxer: UNUSABLE — {Path("/tmp/tsMuxer")} — unusable — likely platform/architecture mismatch: Bad CPU type in executable', text)
         self.assertEqual('', stderr.getvalue())
 
 

@@ -63,6 +63,13 @@ def _dependency_checks():
     return importlib.import_module("dependency_checks")
 
 
+def _optional_probe_line(name: str, exe: Path | None, detail: str) -> str:
+    if exe is None:
+        return f"- {name}: MISSING — {detail}"
+    status = "UNUSABLE" if detail.startswith("unusable") else "OK"
+    return f"- {name}: {status} — {exe} — {detail}"
+
+
 def system_dependency_report(system_name: str) -> tuple[list[str], list[str]]:
     config = SYSTEM_DEPENDENCY_PROBES.get(system_name, {"required": (), "optional": ()})
     deps = _dependency_checks()
@@ -79,10 +86,7 @@ def system_dependency_report(system_name: str) -> tuple[list[str], list[str]]:
 
     for name in config["optional"]:
         exe, detail = deps.check_optional_tool(name)
-        if exe:
-            lines.append(f"- {name}: OK — {exe} — {detail}")
-        else:
-            lines.append(f"- {name}: MISSING — {detail}")
+        lines.append(_optional_probe_line(name, exe, detail))
 
     return missing, lines
 
