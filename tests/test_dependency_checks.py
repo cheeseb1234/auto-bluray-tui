@@ -39,12 +39,43 @@ class DependencyChecksTests(unittest.TestCase):
              mock.patch.object(
                  dependency_checks,
                  'capture_command',
-                 return_value=subprocess.CompletedProcess(['/tmp/tsMuxeR'], 0, stdout='tsMuxeR. Version 2.6.16\nusage: ...\n'),
+                 return_value=subprocess.CompletedProcess(['/tmp/tsMuxeR'], 1, stdout='tsMuxeR. Version 2.6.16\nusage: ...\n'),
              ):
             exe, detail = dependency_checks.check_optional_tool('tsMuxer')
 
         self.assertEqual(exe, Path('/tmp/tsMuxeR'))
         self.assertEqual(detail, 'tsMuxeR. Version 2.6.16')
+
+    def test_check_optional_tool_reports_tsmuxer_arch_mismatch_on_macos(self):
+        with mock.patch.object(dependency_checks.shutil, 'which', return_value='/tmp/tsMuxer'), \
+             mock.patch.object(dependency_checks.platform, 'system', return_value='Darwin'), \
+             mock.patch.object(
+                 dependency_checks,
+                 'capture_command',
+                 side_effect=dependency_checks.DependencyError(
+                     "Failed to run '/tmp/tsMuxer': [Errno 86] Bad CPU type in executable: '/tmp/tsMuxer'"
+                 ),
+             ):
+            exe, detail = dependency_checks.check_optional_tool('tsMuxer')
+
+        self.assertEqual(exe, Path('/tmp/tsMuxer'))
+        self.assertIn('likely platform/architecture mismatch', detail)
+        self.assertIn('Bad CPU type in executable', detail)
+        self.assertIn('justdan96/tsMuxer/releases', detail)
+
+    def test_check_optional_tool_reports_tsmuxer_as_present_but_unusable(self):
+        with mock.patch.object(dependency_checks.shutil, 'which', return_value='/tmp/tsMuxer'), \
+             mock.patch.object(
+                 dependency_checks,
+                 'capture_command',
+                 return_value=subprocess.CompletedProcess(['/tmp/tsMuxer'], 3, stdout='Permission denied\n'),
+             ):
+            exe, detail = dependency_checks.check_optional_tool('tsMuxer')
+
+        self.assertEqual(exe, Path('/tmp/tsMuxer'))
+        self.assertIn('unusable', detail)
+        self.assertIn('exit code 3', detail)
+        self.assertIn('Permission denied', detail)
 
     def test_which_tool_prefers_local_bundle_when_requested(self):
         with tempfile.TemporaryDirectory() as td:

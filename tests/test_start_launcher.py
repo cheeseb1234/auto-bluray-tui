@@ -100,6 +100,27 @@ class StartLauncherTests(unittest.TestCase):
         self.assertIn('requests importable: no', text)
         self.assertIn('tsMuxeR', text)
 
+    def test_doctor_surfaces_platform_aware_tsmuxer_probe_result(self):
+        out = StringIO()
+
+        def fake_check_tool(name):
+            return Path(f'/tmp/{name}'), f'{name} ok'
+
+        def fake_check_optional(name):
+            if name == 'tsMuxer':
+                return Path('/tmp/tsMuxer'), 'unusable — likely platform/architecture mismatch: Bad CPU type in executable — remediation: Download the macOS release from https://github.com/justdan96/tsMuxer/releases and place tsMuxer/tsMuxeR on PATH'
+            return Path(f'/tmp/{name}'), f'{name} ok'
+
+        with mock.patch.object(start, 'check_tool', side_effect=fake_check_tool), \
+             mock.patch.object(start, 'check_optional_tool', side_effect=fake_check_optional), \
+             mock.patch.object(start, 'requests_available', return_value=True), \
+             mock.patch('sys.stdout', out):
+            rc = start.print_doctor()
+
+        self.assertEqual(rc, 0)
+        text = out.getvalue()
+        self.assertIn('- tsMuxer: UNUSABLE — /tmp/tsMuxer — unusable — likely platform/architecture mismatch: Bad CPU type in executable', text)
+
     def test_doctor_includes_expanded_dependency_probe_lines(self):
         out = StringIO()
 

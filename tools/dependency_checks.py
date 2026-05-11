@@ -188,6 +188,38 @@ def _render_command(cmd: list[str | Path]) -> str:
     return " ".join(str(part) for part in cmd)
 
 
+def _tsmuxer_looks_usable_output(text: str) -> bool:
+    return "tsmuxer" in (text or "").lower()
+
+
+def _tsmuxer_platform_mismatch(text: str) -> bool:
+    normalized = (text or "").lower()
+    return any(
+        marker in normalized
+        for marker in (
+            "bad cpu type in executable",
+            "exec format error",
+            "cannot execute binary file",
+            "not a valid win32 application",
+            "%1 is not a valid win32 application",
+            "wrong architecture",
+        )
+    )
+
+
+def _tsmuxer_unusable_message(detail: str, *, returncode: int | None = None) -> str:
+    hint = remediation_hint("tsMuxer")
+    prefix = "unusable"
+    if _tsmuxer_platform_mismatch(detail):
+        prefix += " — likely platform/architecture mismatch"
+    elif returncode is not None:
+        prefix += f" — probe failed with exit code {returncode}"
+    message = f"{prefix}: {detail}"
+    if hint:
+        message += f" — remediation: {hint}"
+    return message
+
+
 def check_tool(name: str) -> tuple[Path, str]:
     exe = find_java_executable() if name == "java" else which_tool(name)
     if not exe:
@@ -217,9 +249,22 @@ def check_optional_tool(name: str, *, root: Path | None = None, prefer_local: bo
             message += f" — install with: {hint}"
         return None, message
 
-    result = capture_command(_version_command(name, exe))
-    if name == "tsMuxer" and (result.stdout or "").strip():
+    if name == "tsMuxer":
+        try:
+            result = capture_command(_version_command(name, exe))
+        except DependencyError as exc:
+            return exe, _tsmuxer_unusable_message(str(exc))
+
+        output = (result.stdout or "").strip()
+        if output and _tsmuxer_platform_mismatch(output):
+            return exe, _tsmuxer_unusable_message(first_output_line(result), returncode=result.returncode)
+        if output and _tsmuxer_looks_usable_output(output):
+            return exe, first_output_line(result)
+        if result.returncode != 0:
+            return exe, _tsmuxer_unusable_message(first_output_line(result), returncode=result.returncode)
         return exe, first_output_line(result)
+
+    result = capture_command(_version_command(name, exe))
     if result.returncode != 0:
         hint = remediation_hint(name)
         message = f"version check failed: {first_output_line(result)}"

@@ -118,6 +118,13 @@ def check_udf_iso_creator() -> tuple[list[str] | None, str]:
     return _dependency_checks().check_udf_iso_creator()
 
 
+def _optional_probe_line(name: str, exe: Path | None, detail: str) -> str:
+    if exe is None:
+        return f"- {name}: MISSING — {detail}"
+    status = "UNUSABLE" if detail.startswith("unusable") else "OK"
+    return f"- {name}: {status} — {exe} — {detail}"
+
+
 def check_curses_available(system_name: str) -> None:
     try:
         import curses  # noqa: F401
@@ -173,7 +180,8 @@ def preflight(project_dir: Path, *, skip_dependency_check: bool, quiet: bool) ->
         exe, version = check_optional_tool(tool)
         if not quiet:
             if exe:
-                print(f"{tool}: {exe} — {version}")
+                prefix = "UNUSABLE" if version.startswith("unusable") else str(exe)
+                print(f"{tool}: {prefix} — {version}")
             else:
                 print(f"{tool}: {version} (some media analysis features may fail)")
 
@@ -249,10 +257,7 @@ def _doctor_lines() -> list[str]:
                 lines.append(f"- {name}: OK — {exe} — {version}")
             else:
                 exe, version = check_optional_tool(name)
-                if exe:
-                    lines.append(f"- {name}: OK — {exe} — {version}")
-                else:
-                    lines.append(f"- {name}: MISSING — {version}")
+                lines.append(_optional_probe_line(name, exe, version))
         except LauncherError as exc:
             lines.append(f"- {name}: ERROR — {exc}")
 
