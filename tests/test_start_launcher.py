@@ -119,7 +119,7 @@ class StartLauncherTests(unittest.TestCase):
 
         self.assertEqual(rc, 0)
         text = out.getvalue()
-        self.assertIn('- tsMuxer: UNUSABLE — /tmp/tsMuxer — unusable — likely platform/architecture mismatch: Bad CPU type in executable', text)
+        self.assertIn(f'- tsMuxer: UNUSABLE — {Path("/tmp/tsMuxer")} — unusable — likely platform/architecture mismatch: Bad CPU type in executable', text)
 
     def test_doctor_includes_expanded_dependency_probe_lines(self):
         out = StringIO()

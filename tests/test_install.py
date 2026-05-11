@@ -65,7 +65,7 @@ class InstallReportingTests(unittest.TestCase):
             install.install_macos(dry_run=False, check_only=True)
 
         text = stdout.getvalue()
-        self.assertIn('- tsMuxer: UNUSABLE — /tmp/tsMuxer — unusable — likely platform/architecture mismatch: Bad CPU type in executable', text)
+        self.assertIn(f'- tsMuxer: UNUSABLE — {Path("/tmp/tsMuxer")} — unusable — likely platform/architecture mismatch: Bad CPU type in executable', text)
         self.assertEqual('', stderr.getvalue())
 
 
