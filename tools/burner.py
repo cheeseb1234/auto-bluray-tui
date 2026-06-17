@@ -10,6 +10,7 @@ The public surface is intentionally small:
 Each OS uses a dedicated strategy internally so platform-specific behavior stays
 contained and testable.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -73,7 +74,9 @@ class BurnStrategy:
             return False
 
     @staticmethod
-    def _capture(cmd: Sequence[str], *, timeout: int = 10) -> subprocess.CompletedProcess[str] | None:
+    def _capture(
+        cmd: Sequence[str], *, timeout: int = 10
+    ) -> subprocess.CompletedProcess[str] | None:
         try:
             return subprocess.run(
                 list(cmd),
@@ -102,7 +105,11 @@ class LinuxBurnStrategy(BurnStrategy):
         parts: list[str] = []
         for field in ("vendor", "model"):
             try:
-                value = (Path("/sys/block") / name / "device" / field).read_text(errors="ignore").strip()
+                value = (
+                    (Path("/sys/block") / name / "device" / field)
+                    .read_text(errors="ignore")
+                    .strip()
+                )
             except OSError:
                 value = ""
             if value:
@@ -111,7 +118,9 @@ class LinuxBurnStrategy(BurnStrategy):
 
     def detect_drive(self) -> Drive | None:
         if self.preferred_drive:
-            return Drive(self.preferred_drive, self._linux_drive_label(self.preferred_drive), self.name)
+            return Drive(
+                self.preferred_drive, self._linux_drive_label(self.preferred_drive), self.name
+            )
 
         candidates = sorted(Path("/dev").glob("sr*"))
         if not candidates:
@@ -165,7 +174,10 @@ class MacOSBurnStrategy(BurnStrategy):
     def burn_iso(self, iso_path: Path) -> bool:
         drutil = shutil.which("drutil")
         if not drutil:
-            print("drutil was not found. This does not look like a standard macOS environment.", file=sys.stderr)
+            print(
+                "drutil was not found. This does not look like a standard macOS environment.",
+                file=sys.stderr,
+            )
             return False
         # drutil streams burn/verification progress to the terminal.
         return self._stream([drutil, "burn", str(iso_path)])
@@ -218,14 +230,18 @@ class WindowsBurnStrategy(BurnStrategy):
         return None
 
     def _native_drive_letter(self) -> str | None:
-        powershell = shutil.which("powershell.exe") or shutil.which("powershell") or shutil.which("pwsh")
+        powershell = (
+            shutil.which("powershell.exe") or shutil.which("powershell") or shutil.which("pwsh")
+        )
         if powershell:
-            result = self._capture([
-                powershell,
-                "-NoProfile",
-                "-Command",
-                "Get-CimInstance Win32_CDROM | Where-Object { $_.Drive } | Select-Object -First 1 -ExpandProperty Drive",
-            ])
+            result = self._capture(
+                [
+                    powershell,
+                    "-NoProfile",
+                    "-Command",
+                    "Get-CimInstance Win32_CDROM | Where-Object { $_.Drive } | Select-Object -First 1 -ExpandProperty Drive",
+                ]
+            )
             if result and result.returncode == 0:
                 for line in result.stdout.splitlines():
                     drive = line.strip()
@@ -265,14 +281,19 @@ class WindowsBurnStrategy(BurnStrategy):
         if imgburn:
             # ImgBurn provides the most automatable Windows burn path and reports
             # useful progress through its own process/log window.
-            return self._stream([
-                str(imgburn),
-                "/MODE", "WRITE",
-                "/SRC", str(iso_path),
-                "/DEST", drive.device,
-                "/START",
-                "/CLOSESUCCESS",
-            ])
+            return self._stream(
+                [
+                    str(imgburn),
+                    "/MODE",
+                    "WRITE",
+                    "/SRC",
+                    str(iso_path),
+                    "/DEST",
+                    drive.device,
+                    "/START",
+                    "/CLOSESUCCESS",
+                ]
+            )
 
         isoburn = self._isoburn()
         if isoburn:
@@ -286,7 +307,10 @@ class WindowsBurnStrategy(BurnStrategy):
             return self._stream([str(isoburn), "/Q", drive.device, str(iso_path)])
 
         print("No supported Windows ISO burner was found.", file=sys.stderr)
-        print("Install ImgBurn and make sure ImgBurn.exe is in PATH, or use Windows' built-in Disc Image Burner manually.", file=sys.stderr)
+        print(
+            "Install ImgBurn and make sure ImgBurn.exe is in PATH, or use Windows' built-in Disc Image Burner manually.",
+            file=sys.stderr,
+        )
         print("ImgBurn: https://www.imgburn.com/", file=sys.stderr)
         return False
 
@@ -343,7 +367,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Burn an ISO image to an optical disc.")
     parser.add_argument("iso", nargs="?", help="ISO image to burn")
     parser.add_argument("--drive", help="Preferred drive/device, e.g. /dev/sr0 or E:")
-    parser.add_argument("--detect", action="store_true", help="Only detect and print the selected drive")
+    parser.add_argument(
+        "--detect", action="store_true", help="Only detect and print the selected drive"
+    )
     args = parser.parse_args(argv)
 
     burner = Burner(preferred_drive=args.drive)

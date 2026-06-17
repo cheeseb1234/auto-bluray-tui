@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Cross-platform dependency installer for Auto Blu-ray TUI."""
+
 from __future__ import annotations
 
 import argparse
@@ -96,7 +97,9 @@ def print_system_dependency_report(system_name: str) -> list[str]:
     return missing
 
 
-def run(cmd: Sequence[str], *, check: bool = True, dry_run: bool = False, cwd: Path | None = None) -> subprocess.CompletedProcess[str] | None:
+def run(
+    cmd: Sequence[str], *, check: bool = True, dry_run: bool = False, cwd: Path | None = None
+) -> subprocess.CompletedProcess[str] | None:
     printable = " ".join(str(part) for part in cmd)
     if dry_run:
         print(f"DRY-RUN: {printable}")
@@ -112,7 +115,9 @@ def run(cmd: Sequence[str], *, check: bool = True, dry_run: bool = False, cwd: P
     except FileNotFoundError as exc:
         raise InstallerError(f"Command not found: {cmd[0]}") from exc
     except subprocess.CalledProcessError as exc:
-        raise InstallerError(f"Command failed with exit code {exc.returncode}: {printable}") from exc
+        raise InstallerError(
+            f"Command failed with exit code {exc.returncode}: {printable}"
+        ) from exc
 
 
 def sudo_prefix(use_sudo: bool) -> list[str]:
@@ -122,7 +127,9 @@ def sudo_prefix(use_sudo: bool) -> list[str]:
         return []
     if command_exists("sudo"):
         return ["sudo"]
-    raise InstallerError("Root privileges are required, but sudo was not found. Re-run as root or install sudo.")
+    raise InstallerError(
+        "Root privileges are required, but sudo was not found. Re-run as root or install sudo."
+    )
 
 
 def linux_distro_hint() -> str:
@@ -184,11 +191,15 @@ def install_macos(*, dry_run: bool, check_only: bool) -> None:
     missing = [tool for tool in ("ffmpeg", "java", "xorriso") if not command_exists(tool)]
     if not missing:
         say("macOS system dependencies already appear to be installed.")
-        warn("tsMuxer is not auto-installed on macOS. If final authoring fails, install/download tsMuxer and ensure tsMuxer/tsMuxeR is on PATH.")
+        warn(
+            "tsMuxer is not auto-installed on macOS. If final authoring fails, install/download tsMuxer and ensure tsMuxer/tsMuxeR is on PATH."
+        )
         return
     warn(f"Missing system tools: {', '.join(missing)}")
     if check_only:
-        warn("tsMuxer is not auto-installed on macOS. Install/download it separately and ensure tsMuxer/tsMuxeR is on PATH.")
+        warn(
+            "tsMuxer is not auto-installed on macOS. Install/download it separately and ensure tsMuxer/tsMuxeR is on PATH."
+        )
         return
 
     if not command_exists("brew"):
@@ -200,8 +211,12 @@ def install_macos(*, dry_run: bool, check_only: bool) -> None:
 
     run(["brew", "install", "ffmpeg", "xorriso"], dry_run=dry_run)
     run(["brew", "install", "--cask", "temurin@17"], dry_run=dry_run)
-    warn("If java is still not found after Homebrew finishes, run /usr/libexec/java_home -V and make sure PATH/JAVA_HOME expose the installed JDK.")
-    warn("tsMuxer is not auto-installed on macOS. Download the macOS release from https://github.com/justdan96/tsMuxer/releases and place tsMuxer/tsMuxeR on PATH.")
+    warn(
+        "If java is still not found after Homebrew finishes, run /usr/libexec/java_home -V and make sure PATH/JAVA_HOME expose the installed JDK."
+    )
+    warn(
+        "tsMuxer is not auto-installed on macOS. Download the macOS release from https://github.com/justdan96/tsMuxer/releases and place tsMuxer/tsMuxeR on PATH."
+    )
 
 
 def install_windows(*, dry_run: bool, check_only: bool) -> None:
@@ -221,14 +236,30 @@ def install_windows(*, dry_run: bool, check_only: bool) -> None:
 
     if command_exists("winget"):
         # --accept flags keep the command non-interactive on current winget.
-        run([
-            "winget", "install", "--id", "Gyan.FFmpeg", "--exact",
-            "--accept-package-agreements", "--accept-source-agreements",
-        ], dry_run=dry_run)
-        run([
-            "winget", "install", "--id", "Microsoft.OpenJDK.11", "--exact",
-            "--accept-package-agreements", "--accept-source-agreements",
-        ], dry_run=dry_run)
+        run(
+            [
+                "winget",
+                "install",
+                "--id",
+                "Gyan.FFmpeg",
+                "--exact",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
+            ],
+            dry_run=dry_run,
+        )
+        run(
+            [
+                "winget",
+                "install",
+                "--id",
+                "Microsoft.OpenJDK.11",
+                "--exact",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
+            ],
+            dry_run=dry_run,
+        )
         return
 
     if command_exists("scoop"):
@@ -270,7 +301,9 @@ def ensure_venv(*, python_exe: str, dry_run: bool, recreate: bool) -> Path:
     return py
 
 
-def install_python_requirements(*, python_exe: str, dry_run: bool, recreate_venv: bool, check_only: bool) -> None:
+def install_python_requirements(
+    *, python_exe: str, dry_run: bool, recreate_venv: bool, check_only: bool
+) -> None:
     req = requirements_path()
     if not req.is_file():
         raise InstallerError(f"Missing requirements.txt: {req}")
@@ -283,7 +316,9 @@ def install_python_requirements(*, python_exe: str, dry_run: bool, recreate_venv
     run([str(py), "-m", "pip", "install", "-r", str(req)], dry_run=dry_run)
 
 
-def install_system_dependencies(system_name: str, *, dry_run: bool, check_only: bool, use_sudo: bool, skip_system: bool) -> None:
+def install_system_dependencies(
+    system_name: str, *, dry_run: bool, check_only: bool, use_sudo: bool, skip_system: bool
+) -> None:
     if skip_system:
         say("Skipping system package installation.")
         return
@@ -295,18 +330,42 @@ def install_system_dependencies(system_name: str, *, dry_run: bool, check_only: 
     elif system_name == "Windows":
         install_windows(dry_run=dry_run, check_only=check_only)
     else:
-        raise InstallerError(f"Unsupported OS: {system_name}. Install ffmpeg and OpenJDK 8+ manually.")
+        raise InstallerError(
+            f"Unsupported OS: {system_name}. Install ffmpeg and OpenJDK 8+ manually."
+        )
 
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=f"Install dependencies for {APP_NAME}.")
-    parser.add_argument("--check-only", action="store_true", help="Report what would be checked/installed without installing.")
-    parser.add_argument("--dry-run", action="store_true", help="Print install commands without running them.")
-    parser.add_argument("--no-system", action="store_true", help="Skip ffmpeg/java package-manager installation.")
-    parser.add_argument("--no-venv", action="store_true", help="Skip .venv creation and Python requirements installation.")
-    parser.add_argument("--recreate-venv", action="store_true", help="Delete and recreate .venv before installing requirements.")
-    parser.add_argument("--no-sudo", action="store_true", help="Do not use sudo for Linux package installs.")
-    parser.add_argument("--python", default=sys.executable, help="Python executable to use for venv reporting; defaults to this Python.")
+    parser.add_argument(
+        "--check-only",
+        action="store_true",
+        help="Report what would be checked/installed without installing.",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Print install commands without running them."
+    )
+    parser.add_argument(
+        "--no-system", action="store_true", help="Skip ffmpeg/java package-manager installation."
+    )
+    parser.add_argument(
+        "--no-venv",
+        action="store_true",
+        help="Skip .venv creation and Python requirements installation.",
+    )
+    parser.add_argument(
+        "--recreate-venv",
+        action="store_true",
+        help="Delete and recreate .venv before installing requirements.",
+    )
+    parser.add_argument(
+        "--no-sudo", action="store_true", help="Do not use sudo for Linux package installs."
+    )
+    parser.add_argument(
+        "--python",
+        default=sys.executable,
+        help="Python executable to use for venv reporting; defaults to this Python.",
+    )
     return parser.parse_args(argv)
 
 
@@ -338,7 +397,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
 
         say("Dependency setup complete.")
-        say("Next: python start.py \"/path/to/project\"")
+        say('Next: python start.py "/path/to/project"')
         return 0
     except InstallerError as exc:
         print(f"Error: {exc}", file=sys.stderr)

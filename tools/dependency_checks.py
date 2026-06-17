@@ -58,7 +58,9 @@ def requests_available() -> bool:
 
 def _java_runtime_missing_output(text: str) -> bool:
     normalized = (text or "").lower()
-    return "unable to locate a java runtime" in normalized or "no java runtime present" in normalized
+    return (
+        "unable to locate a java runtime" in normalized or "no java runtime present" in normalized
+    )
 
 
 def _tool_candidates(name: str) -> tuple[str, ...]:
@@ -208,7 +210,9 @@ def check_tool(name: str) -> tuple[Path, str]:
     return exe, first_output_line(result)
 
 
-def check_optional_tool(name: str, *, root: Path | None = None, prefer_local: bool = False) -> tuple[Path | None, str]:
+def check_optional_tool(
+    name: str, *, root: Path | None = None, prefer_local: bool = False
+) -> tuple[Path | None, str]:
     exe = which_tool(name, root=root, prefer_local=prefer_local)
     if not exe:
         hint = remediation_hint(name)
@@ -229,7 +233,9 @@ def check_optional_tool(name: str, *, root: Path | None = None, prefer_local: bo
     return exe, first_output_line(result)
 
 
-def check_udf_iso_creator(*, root: Path | None = None, prefer_local: bool = False) -> tuple[list[str] | None, str]:
+def check_udf_iso_creator(
+    *, root: Path | None = None, prefer_local: bool = False
+) -> tuple[list[str] | None, str]:
     candidates: list[list[str]] = []
     unsupported: list[str] = []
 

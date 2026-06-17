@@ -8,51 +8,73 @@ import subprocess
 import time
 from pathlib import Path
 
-VIDEO_EXTS={'.mkv','.mp4','.m2ts','.mov'}
-SUB_EXTS={'.srt','.sup','.ass','.ssa'}
-DISC_PRESETS={
+VIDEO_EXTS = {".mkv", ".mp4", ".m2ts", ".mov"}
+SUB_EXTS = {".srt", ".sup", ".ass", ".ssa"}
+DISC_PRESETS = {
     # capacity_bytes are practical decimal disc capacities with safety margin
     # applied later for mux/filesystem/menu overhead.
-    'dvd5': {'label': 'DVD-5 sized Blu-ray/AVCHD target', 'capacity_bytes': 4_700_000_000, 'audio_bitrate': '192k', 'maxrate': '3000k', 'bufsize': '6000k'},
-    'dvd9': {'label': 'DVD-9 sized Blu-ray/AVCHD target', 'capacity_bytes': 8_500_000_000, 'audio_bitrate': '256k', 'maxrate': '6000k', 'bufsize': '9000k'},
-    'bd25': {'label': 'BD-25 target', 'capacity_bytes': 25_000_000_000, 'audio_bitrate': '448k', 'maxrate': '9000k', 'bufsize': '12000k'},
+    "dvd5": {
+        "label": "DVD-5 sized Blu-ray/AVCHD target",
+        "capacity_bytes": 4_700_000_000,
+        "audio_bitrate": "192k",
+        "maxrate": "3000k",
+        "bufsize": "6000k",
+    },
+    "dvd9": {
+        "label": "DVD-9 sized Blu-ray/AVCHD target",
+        "capacity_bytes": 8_500_000_000,
+        "audio_bitrate": "256k",
+        "maxrate": "6000k",
+        "bufsize": "9000k",
+    },
+    "bd25": {
+        "label": "BD-25 target",
+        "capacity_bytes": 25_000_000_000,
+        "audio_bitrate": "448k",
+        "maxrate": "9000k",
+        "bufsize": "12000k",
+    },
 }
 
 
-def parse_bitrate(value: str|None) -> int:
+def parse_bitrate(value: str | None) -> int:
     if not value:
         return 0
-    text=str(value).strip().lower()
-    mult=1
-    if text.endswith('k'):
-        mult=1000; text=text[:-1]
-    elif text.endswith('m'):
-        mult=1000_000; text=text[:-1]
+    text = str(value).strip().lower()
+    mult = 1
+    if text.endswith("k"):
+        mult = 1000
+        text = text[:-1]
+    elif text.endswith("m"):
+        mult = 1000_000
+        text = text[:-1]
     try:
-        return int(float(text)*mult)
+        return int(float(text) * mult)
     except Exception:
         return 0
 
 
 def fmt_kbps(bits_per_second: int) -> str:
-    return f'{max(100, int(bits_per_second/1000))}k'
+    return f"{max(100, int(bits_per_second / 1000))}k"
 
 
-def preset_video_bitrate(disc_preset: str, total_duration_seconds: float, audio_bitrate: str) -> str|None:
-    preset=DISC_PRESETS.get(disc_preset)
+def preset_video_bitrate(
+    disc_preset: str, total_duration_seconds: float, audio_bitrate: str
+) -> str | None:
+    preset = DISC_PRESETS.get(disc_preset)
     if not preset or not total_duration_seconds:
         return None
     # Leave generous room for BD-J menus, subtitle streams, BDMV structures,
     # UDF/ISO overhead, and encoder/mux variance.
-    usable_bits=preset['capacity_bytes']*8*0.88
-    audio_bps=parse_bitrate(audio_bitrate)
-    video_bps=int(usable_bits/total_duration_seconds - audio_bps - 350_000)
+    usable_bits = preset["capacity_bytes"] * 8 * 0.88
+    audio_bps = parse_bitrate(audio_bitrate)
+    video_bps = int(usable_bits / total_duration_seconds - audio_bps - 350_000)
     return fmt_kbps(max(350_000, video_bps))
 
 
 def max_total_bitrate_for_options(expected_options: dict) -> int:
-    video=parse_bitrate(expected_options.get('video_bitrate'))
-    audio=parse_bitrate(expected_options.get('audio_bitrate'))
+    video = parse_bitrate(expected_options.get("video_bitrate"))
+    audio = parse_bitrate(expected_options.get("audio_bitrate"))
     if not video:
         return 0
     return int((video + audio + 500_000) * 1.20)
@@ -63,9 +85,19 @@ def run(cmd):
 
 
 def ffprobe(path: Path):
-    data=run(['ffprobe','-hide_banner','-v','error','-show_entries',
-              'format=filename,duration,size,bit_rate:stream=index,codec_type,codec_name,width,height,r_frame_rate,avg_frame_rate,channels,sample_rate:stream_tags=language,title',
-              '-of','json',str(path)])
+    data = run(
+        [
+            "ffprobe",
+            "-hide_banner",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=filename,duration,size,bit_rate:stream=index,codec_type,codec_name,width,height,r_frame_rate,avg_frame_rate,channels,sample_rate:stream_tags=language,title",
+            "-of",
+            "json",
+            str(path),
+        ]
+    )
     return json.loads(data)
 
 
@@ -76,291 +108,494 @@ def read_json(path: Path):
         return None
 
 
-def expected_encode_options(args, selected_encoder: str, audio_bitrate: str, video_bitrate: str|None, maxrate: str, bufsize: str):
+def expected_encode_options(
+    args,
+    selected_encoder: str,
+    audio_bitrate: str,
+    video_bitrate: str | None,
+    maxrate: str,
+    bufsize: str,
+):
     return {
-        'encoder': selected_encoder,
-        'resolution': args.resolution,
-        'cq': args.cq,
-        'crf': args.crf,
-        'audio_bitrate': audio_bitrate,
-        'nvenc_preset': args.nvenc_preset,
-        'disc_preset': args.disc_preset,
-        'video_bitrate': video_bitrate,
-        'maxrate': maxrate,
-        'bufsize': bufsize,
-        'cpu_preset': args.cpu_preset,
-        'burn_first_subtitle': bool(args.burn_first_subtitle),
-        'smoke_seconds': args.smoke_seconds,
+        "encoder": selected_encoder,
+        "resolution": args.resolution,
+        "cq": args.cq,
+        "crf": args.crf,
+        "audio_bitrate": audio_bitrate,
+        "nvenc_preset": args.nvenc_preset,
+        "disc_preset": args.disc_preset,
+        "video_bitrate": video_bitrate,
+        "maxrate": maxrate,
+        "bufsize": bufsize,
+        "cpu_preset": args.cpu_preset,
+        "burn_first_subtitle": bool(args.burn_first_subtitle),
+        "smoke_seconds": args.smoke_seconds,
     }
 
 
 def output_acceptable(path: Path, item: dict, args, expected_options: dict):
     if not path.exists() or path.stat().st_size <= 0:
-        return False, 'missing output'
+        return False, "missing output"
     try:
         probe = ffprobe(path)
     except Exception as e:
-        return False, f'ffprobe failed: {e}'
+        return False, f"ffprobe failed: {e}"
 
-    duration = float(probe.get('format', {}).get('duration') or 0)
-    target_duration = float(args.smoke_seconds or item.get('duration_seconds') or 0)
+    duration = float(probe.get("format", {}).get("duration") or 0)
+    target_duration = float(args.smoke_seconds or item.get("duration_seconds") or 0)
     # Full-length encodes should be within a couple seconds of source duration.
     # Smoke encodes should be at least almost the requested sample length.
     tolerance = 0.75 if args.smoke_seconds else 2.0
     if target_duration and duration < max(1.0, target_duration - tolerance):
-        return False, f'duration too short ({duration:.1f}s < {target_duration:.1f}s)'
+        return False, f"duration too short ({duration:.1f}s < {target_duration:.1f}s)"
 
-    streams = probe.get('streams', [])
-    video = next((s for s in streams if s.get('codec_type') == 'video'), None)
-    audio = next((s for s in streams if s.get('codec_type') == 'audio'), None)
-    if not video or video.get('codec_name') != 'h264':
-        return False, 'video is not H.264'
-    if not audio or audio.get('codec_name') != 'ac3':
-        return False, 'audio is not AC-3'
-    if str(audio.get('sample_rate') or '') != '48000':
-        return False, 'audio is not 48 kHz'
+    streams = probe.get("streams", [])
+    video = next((s for s in streams if s.get("codec_type") == "video"), None)
+    audio = next((s for s in streams if s.get("codec_type") == "audio"), None)
+    if not video or video.get("codec_name") != "h264":
+        return False, "video is not H.264"
+    if not audio or audio.get("codec_name") != "ac3":
+        return False, "audio is not AC-3"
+    if str(audio.get("sample_rate") or "") != "48000":
+        return False, "audio is not 48 kHz"
 
     try:
-        width, height = [int(x) for x in str(args.resolution).lower().split('x', 1)]
+        width, height = [int(x) for x in str(args.resolution).lower().split("x", 1)]
     except Exception:
         width, height = 1920, 1080
-    if int(video.get('width') or 0) != width or int(video.get('height') or 0) != height:
-        return False, f'resolution mismatch ({video.get("width")}x{video.get("height")})'
+    if int(video.get("width") or 0) != width or int(video.get("height") or 0) != height:
+        return False, f"resolution mismatch ({video.get('width')}x{video.get('height')})"
 
     max_total_bitrate = max_total_bitrate_for_options(expected_options)
     if max_total_bitrate:
         try:
-            bit_rate = int(probe.get('format', {}).get('bit_rate') or 0)
+            bit_rate = int(probe.get("format", {}).get("bit_rate") or 0)
         except Exception:
             bit_rate = 0
         if bit_rate and bit_rate > max_total_bitrate:
-            return False, f'bitrate too high for {args.disc_preset} preset ({bit_rate/1_000_000:.1f} Mb/s)'
+            return (
+                False,
+                f"bitrate too high for {args.disc_preset} preset ({bit_rate / 1_000_000:.1f} Mb/s)",
+            )
 
-    return True, 'acceptable existing encode'
+    return True, "acceptable existing encode"
 
 
 def language_from_name(path: Path):
-    s=path.stem.lower()
-    if 'spanish' in s or ' esp' in s or '.es' in s:
-        return 'spa'
-    if 'english' in s or ' eng' in s or '.en' in s:
-        return 'eng'
-    return 'eng'
+    s = path.stem.lower()
+    if "spanish" in s or " esp" in s or ".es" in s:
+        return "spa"
+    if "english" in s or " eng" in s or ".en" in s:
+        return "eng"
+    return "eng"
 
 
 def discover(project: Path):
-    loop_dir = project / 'build' / 'pptx-menu-loops'
+    loop_dir = project / "build" / "pptx-menu-loops"
     loop_source_names = set()
-    source_list = loop_dir / 'source-videos.json'
+    source_list = loop_dir / "source-videos.json"
     if source_list.exists():
         try:
             loop_source_names = set(json.loads(source_list.read_text()))
         except Exception:
             loop_source_names = set()
-    videos=sorted([p for p in project.iterdir() if p.suffix.lower() in VIDEO_EXTS and p.name not in loop_source_names], key=lambda p:p.name.lower())
+    videos = sorted(
+        [
+            p
+            for p in project.iterdir()
+            if p.suffix.lower() in VIDEO_EXTS and p.name not in loop_source_names
+        ],
+        key=lambda p: p.name.lower(),
+    )
     if loop_dir.exists():
-        videos.extend(sorted([p for p in loop_dir.iterdir() if p.suffix.lower() in VIDEO_EXTS], key=lambda p:p.name.lower()))
-    subs=sorted([p for p in project.iterdir() if p.suffix.lower() in SUB_EXTS], key=lambda p:p.name.lower())
-    items=[]
+        videos.extend(
+            sorted(
+                [p for p in loop_dir.iterdir() if p.suffix.lower() in VIDEO_EXTS],
+                key=lambda p: p.name.lower(),
+            )
+        )
+    subs = sorted(
+        [p for p in project.iterdir() if p.suffix.lower() in SUB_EXTS], key=lambda p: p.name.lower()
+    )
+    items = []
     for v in videos:
-        probe=ffprobe(v)
-        vstreams=[s for s in probe.get('streams',[]) if s.get('codec_type')=='video']
-        astreams=[s for s in probe.get('streams',[]) if s.get('codec_type')=='audio']
-        sstreams=[s for s in probe.get('streams',[]) if s.get('codec_type')=='subtitle']
-        matching_subs=[]
+        probe = ffprobe(v)
+        vstreams = [s for s in probe.get("streams", []) if s.get("codec_type") == "video"]
+        astreams = [s for s in probe.get("streams", []) if s.get("codec_type") == "audio"]
+        sstreams = [s for s in probe.get("streams", []) if s.get("codec_type") == "subtitle"]
+        matching_subs = []
         for s in subs:
             # Match "Video 4.srt" and "Video 4 Spanish.srt" to "Video 4.mp4".
             if s.stem.lower().startswith(v.stem.lower()):
-                matching_subs.append({'file':s.name,'language':language_from_name(s)})
+                matching_subs.append({"file": s.name, "language": language_from_name(s)})
         rel = str(v.relative_to(project)) if v.is_relative_to(project) else v.name
-        item={
-            'file': rel,
-            'duration_seconds': float(probe.get('format',{}).get('duration') or 0),
-            'size_bytes': int(probe.get('format',{}).get('size') or 0),
-            'video': vstreams[0] if vstreams else None,
-            'audio': astreams[0] if astreams else None,
-            'embedded_subtitle_streams': sstreams,
-            'sidecar_subtitles': matching_subs,
-            'recommended_output': f"encoded/{v.stem}.m2ts",
+        item = {
+            "file": rel,
+            "duration_seconds": float(probe.get("format", {}).get("duration") or 0),
+            "size_bytes": int(probe.get("format", {}).get("size") or 0),
+            "video": vstreams[0] if vstreams else None,
+            "audio": astreams[0] if astreams else None,
+            "embedded_subtitle_streams": sstreams,
+            "sidecar_subtitles": matching_subs,
+            "recommended_output": f"encoded/{v.stem}.m2ts",
         }
         items.append(item)
-    return {'project_dir':str(project), 'videos':items, 'subtitle_files':[p.name for p in subs]}
+    return {"project_dir": str(project), "videos": items, "subtitle_files": [p.name for p in subs]}
 
 
-def ffmpeg_cmd(project: Path, item: dict, output_root: Path, seconds: int|None=None, burn_subtitle: str|None=None, progress_file: Path|None=None, encoder: str='cpu', resolution: str='1920x1080', cq: int=18, crf: int=18, audio_bitrate: str='640k', nvenc_preset: str='p5', cpu_preset: str='slow', video_bitrate: str|None=None, maxrate: str='40000k', bufsize: str='30000k'):
-    src=project/item['file']
-    out=output_root/item['recommended_output']
+def ffmpeg_cmd(
+    project: Path,
+    item: dict,
+    output_root: Path,
+    seconds: int | None = None,
+    burn_subtitle: str | None = None,
+    progress_file: Path | None = None,
+    encoder: str = "cpu",
+    resolution: str = "1920x1080",
+    cq: int = 18,
+    crf: int = 18,
+    audio_bitrate: str = "640k",
+    nvenc_preset: str = "p5",
+    cpu_preset: str = "slow",
+    video_bitrate: str | None = None,
+    maxrate: str = "40000k",
+    bufsize: str = "30000k",
+):
+    src = project / item["file"]
+    out = output_root / item["recommended_output"]
     out.parent.mkdir(parents=True, exist_ok=True)
     try:
-        width, height = [int(x) for x in resolution.lower().split('x', 1)]
+        width, height = [int(x) for x in resolution.lower().split("x", 1)]
     except Exception:
         width, height = 1920, 1080
-    vf=f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1"
+    vf = f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1"
     if burn_subtitle:
         # Escape for ffmpeg subtitles filter. Keep simple for local paths.
-        sub=str(project/burn_subtitle).replace("'", "\\'")
+        sub = str(project / burn_subtitle).replace("'", "\\'")
         vf += f",subtitles='{sub}'"
-    cmd=['ffmpeg','-hide_banner','-y']
+    cmd = ["ffmpeg", "-hide_banner", "-y"]
     if progress_file:
         progress_file.parent.mkdir(parents=True, exist_ok=True)
-        cmd += ['-progress', str(progress_file), '-nostats']
+        cmd += ["-progress", str(progress_file), "-nostats"]
     if seconds:
-        cmd += ['-t', str(seconds)]
-    cmd += ['-i', str(src), '-map','0:v:0','-map','0:a:0', '-vf', vf, '-r','24000/1001']
-    if encoder == 'nvenc':
-        cmd += ['-c:v','h264_nvenc', '-preset',str(nvenc_preset), '-tune','hq']
+        cmd += ["-t", str(seconds)]
+    cmd += ["-i", str(src), "-map", "0:v:0", "-map", "0:a:0", "-vf", vf, "-r", "24000/1001"]
+    if encoder == "nvenc":
+        cmd += ["-c:v", "h264_nvenc", "-preset", str(nvenc_preset), "-tune", "hq"]
         if video_bitrate:
             # Bitrate-targeted mode is required for BD-25 sizing. Do not combine
             # this with -cq; on current ffmpeg/NVENC that let the encode drift up
             # to maxrate-sized output instead of the requested average bitrate.
-            cmd += ['-rc','vbr', '-multipass','fullres', '-b:v',str(video_bitrate), '-maxrate',str(maxrate), '-bufsize',str(bufsize)]
+            cmd += [
+                "-rc",
+                "vbr",
+                "-multipass",
+                "fullres",
+                "-b:v",
+                str(video_bitrate),
+                "-maxrate",
+                str(maxrate),
+                "-bufsize",
+                str(bufsize),
+            ]
         else:
-            cmd += ['-rc','vbr', '-cq',str(cq), '-b:v','0', '-maxrate',str(maxrate), '-bufsize',str(bufsize)]
+            cmd += [
+                "-rc",
+                "vbr",
+                "-cq",
+                str(cq),
+                "-b:v",
+                "0",
+                "-maxrate",
+                str(maxrate),
+                "-bufsize",
+                str(bufsize),
+            ]
         cmd += [
-            '-profile:v','high', '-level:v','4.1', '-pix_fmt','yuv420p',
-            '-g','24', '-bf','3', '-spatial_aq','1', '-temporal_aq','1',
+            "-profile:v",
+            "high",
+            "-level:v",
+            "4.1",
+            "-pix_fmt",
+            "yuv420p",
+            "-g",
+            "24",
+            "-bf",
+            "3",
+            "-spatial_aq",
+            "1",
+            "-temporal_aq",
+            "1",
         ]
     else:
-        cmd += ['-c:v','libx264','-preset',str(cpu_preset),'-profile:v','high','-level:v','4.1', '-pix_fmt','yuv420p']
+        cmd += [
+            "-c:v",
+            "libx264",
+            "-preset",
+            str(cpu_preset),
+            "-profile:v",
+            "high",
+            "-level:v",
+            "4.1",
+            "-pix_fmt",
+            "yuv420p",
+        ]
         if video_bitrate:
-            cmd += ['-b:v',str(video_bitrate)]
+            cmd += ["-b:v", str(video_bitrate)]
         else:
-            cmd += ['-crf',str(crf),'-b:v','0']
-        cmd += ['-maxrate',str(maxrate),'-bufsize',str(bufsize),'-x264-params',f'bluray-compat=1:vbv-maxrate={str(maxrate).rstrip("k")}:vbv-bufsize={str(bufsize).rstrip("k")}:keyint=24:min-keyint=1:slices=4']
-    cmd += ['-c:a','ac3','-b:a',str(audio_bitrate),'-ar','48000', '-mpegts_m2ts_mode','1', str(out)]
+            cmd += ["-crf", str(crf), "-b:v", "0"]
+        cmd += [
+            "-maxrate",
+            str(maxrate),
+            "-bufsize",
+            str(bufsize),
+            "-x264-params",
+            f"bluray-compat=1:vbv-maxrate={str(maxrate).rstrip('k')}:vbv-bufsize={str(bufsize).rstrip('k')}:keyint=24:min-keyint=1:slices=4",
+        ]
+    cmd += [
+        "-c:a",
+        "ac3",
+        "-b:a",
+        str(audio_bitrate),
+        "-ar",
+        "48000",
+        "-mpegts_m2ts_mode",
+        "1",
+        str(out),
+    ]
     return cmd
 
 
 def nvidia_status():
     try:
-        smi=subprocess.run(['nvidia-smi','--query-gpu=name,driver_version,memory.total','--format=csv,noheader'], capture_output=True, text=True, timeout=5)
-        enc=subprocess.run(['ffmpeg','-hide_banner','-encoders'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=10)
+        smi = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,driver_version,memory.total", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        enc = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-encoders"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=10,
+        )
         return {
-            'nvidia_smi': smi.stdout.strip() if smi.returncode == 0 else None,
-            'h264_nvenc': 'h264_nvenc' in enc.stdout,
-            'hevc_nvenc': 'hevc_nvenc' in enc.stdout,
-            'available': smi.returncode == 0 and 'h264_nvenc' in enc.stdout,
+            "nvidia_smi": smi.stdout.strip() if smi.returncode == 0 else None,
+            "h264_nvenc": "h264_nvenc" in enc.stdout,
+            "hevc_nvenc": "hevc_nvenc" in enc.stdout,
+            "available": smi.returncode == 0 and "h264_nvenc" in enc.stdout,
         }
     except Exception as e:
-        return {'available': False, 'error': str(e)}
+        return {"available": False, "error": str(e)}
 
 
 def write_plan(project: Path, manifest: dict, output_root: Path):
-    lines=['# FFmpeg Blu-ray media preparation plan', '', 'This prepares Blu-ray-friendly 1920x1080 H.264 + AC-3 `.m2ts` files.', '', '```bash']
-    for item in manifest['videos']:
-        cmd=ffmpeg_cmd(project, item, output_root, encoder='cpu')
-        lines.append(' '.join(shlex.quote(x) for x in cmd))
-    lines += ['```','', 'Subtitle note: Blu-ray selectable subtitles normally need PGS/SUP authoring. This workflow keeps `.srt` files mapped in the manifest for the next mux/authoring layer. For maximum compatibility today, burn subtitles into video when needed.']
-    (output_root/'ffmpeg-plan.md').write_text('\n'.join(lines)+'\n')
+    lines = [
+        "# FFmpeg Blu-ray media preparation plan",
+        "",
+        "This prepares Blu-ray-friendly 1920x1080 H.264 + AC-3 `.m2ts` files.",
+        "",
+        "```bash",
+    ]
+    for item in manifest["videos"]:
+        cmd = ffmpeg_cmd(project, item, output_root, encoder="cpu")
+        lines.append(" ".join(shlex.quote(x) for x in cmd))
+    lines += [
+        "```",
+        "",
+        "Subtitle note: Blu-ray selectable subtitles normally need PGS/SUP authoring. This workflow keeps `.srt` files mapped in the manifest for the next mux/authoring layer. For maximum compatibility today, burn subtitles into video when needed.",
+    ]
+    (output_root / "ffmpeg-plan.md").write_text("\n".join(lines) + "\n")
 
 
 def main():
-    ap=argparse.ArgumentParser(description='Analyze and prepare media for the PPTX Blu-ray workflow.')
-    ap.add_argument('project_dir')
-    ap.add_argument('--output-root', default=None)
-    ap.add_argument('--write-manifest', action='store_true')
-    ap.add_argument('--plan', action='store_true')
-    ap.add_argument('--encode', action='store_true')
-    ap.add_argument('--smoke-seconds', type=int, default=None, help='encode only first N seconds')
-    ap.add_argument('--only', default=None, help='only encode a video filename substring, e.g. "Video 1"')
-    ap.add_argument('--burn-first-subtitle', action='store_true', help='burn first matching sidecar .srt into each encoded video')
-    ap.add_argument('--encoder', choices=['auto','cpu','nvenc'], default='auto', help='video encoder backend; auto uses NVIDIA NVENC when available')
-    ap.add_argument('--resolution', default='1920x1080', help='output frame size, e.g. 1920x1080 or 1280x720')
-    ap.add_argument('--cq', type=int, default=18, help='NVENC constant-quality value; lower is higher quality')
-    ap.add_argument('--crf', type=int, default=18, help='x264 CRF value; lower is higher quality')
-    ap.add_argument('--audio-bitrate', default='640k', help='AC-3 audio bitrate')
-    ap.add_argument('--nvenc-preset', default='p5', help='NVENC preset, e.g. p4/p5/p6/p7')
-    ap.add_argument('--cpu-preset', default='slow', help='x264 preset, e.g. medium/slow/veryslow')
-    ap.add_argument('--disc-preset', choices=['quality','dvd5','dvd9','bd25'], default='quality', help='quality keeps CRF/CQ behavior; dvd5/dvd9/bd25 target disc-sized Blu-ray/AVCHD images')
-    ap.add_argument('--video-bitrate', default=None, help='average video bitrate, e.g. 6200k; overrides disc preset')
-    ap.add_argument('--maxrate', default='40000k', help='video VBV maxrate')
-    ap.add_argument('--bufsize', default='30000k', help='video VBV buffer size')
-    ap.add_argument('--force-reencode', action='store_true', help='re-encode even when an existing output appears acceptable')
-    ap.add_argument('--gpu-status', action='store_true', help='print NVIDIA/NVENC detection and exit')
-    args=ap.parse_args()
+    ap = argparse.ArgumentParser(
+        description="Analyze and prepare media for the PPTX Blu-ray workflow."
+    )
+    ap.add_argument("project_dir")
+    ap.add_argument("--output-root", default=None)
+    ap.add_argument("--write-manifest", action="store_true")
+    ap.add_argument("--plan", action="store_true")
+    ap.add_argument("--encode", action="store_true")
+    ap.add_argument("--smoke-seconds", type=int, default=None, help="encode only first N seconds")
+    ap.add_argument(
+        "--only", default=None, help='only encode a video filename substring, e.g. "Video 1"'
+    )
+    ap.add_argument(
+        "--burn-first-subtitle",
+        action="store_true",
+        help="burn first matching sidecar .srt into each encoded video",
+    )
+    ap.add_argument(
+        "--encoder",
+        choices=["auto", "cpu", "nvenc"],
+        default="auto",
+        help="video encoder backend; auto uses NVIDIA NVENC when available",
+    )
+    ap.add_argument(
+        "--resolution", default="1920x1080", help="output frame size, e.g. 1920x1080 or 1280x720"
+    )
+    ap.add_argument(
+        "--cq", type=int, default=18, help="NVENC constant-quality value; lower is higher quality"
+    )
+    ap.add_argument("--crf", type=int, default=18, help="x264 CRF value; lower is higher quality")
+    ap.add_argument("--audio-bitrate", default="640k", help="AC-3 audio bitrate")
+    ap.add_argument("--nvenc-preset", default="p5", help="NVENC preset, e.g. p4/p5/p6/p7")
+    ap.add_argument("--cpu-preset", default="slow", help="x264 preset, e.g. medium/slow/veryslow")
+    ap.add_argument(
+        "--disc-preset",
+        choices=["quality", "dvd5", "dvd9", "bd25"],
+        default="quality",
+        help="quality keeps CRF/CQ behavior; dvd5/dvd9/bd25 target disc-sized Blu-ray/AVCHD images",
+    )
+    ap.add_argument(
+        "--video-bitrate",
+        default=None,
+        help="average video bitrate, e.g. 6200k; overrides disc preset",
+    )
+    ap.add_argument("--maxrate", default="40000k", help="video VBV maxrate")
+    ap.add_argument("--bufsize", default="30000k", help="video VBV buffer size")
+    ap.add_argument(
+        "--force-reencode",
+        action="store_true",
+        help="re-encode even when an existing output appears acceptable",
+    )
+    ap.add_argument(
+        "--gpu-status", action="store_true", help="print NVIDIA/NVENC detection and exit"
+    )
+    args = ap.parse_args()
     if args.gpu_status:
         print(json.dumps(nvidia_status(), indent=2))
         return
-    project=Path(args.project_dir).resolve()
-    output_root=Path(args.output_root).resolve() if args.output_root else project/'build'/'bluray-media'
+    project = Path(args.project_dir).resolve()
+    output_root = (
+        Path(args.output_root).resolve() if args.output_root else project / "build" / "bluray-media"
+    )
     output_root.mkdir(parents=True, exist_ok=True)
-    manifest=discover(project)
+    manifest = discover(project)
     if args.write_manifest or args.plan or args.encode:
-        (output_root/'media-manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
+        (output_root / "media-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     if args.plan:
         write_plan(project, manifest, output_root)
     if args.encode:
-        total_duration = sum(float(v.get('duration_seconds') or 0) for v in manifest.get('videos', []))
-        for item in manifest['videos']:
-            if args.only and args.only.lower() not in item['file'].lower():
+        total_duration = sum(
+            float(v.get("duration_seconds") or 0) for v in manifest.get("videos", [])
+        )
+        for item in manifest["videos"]:
+            if args.only and args.only.lower() not in item["file"].lower():
                 continue
-            burn=None
-            if args.burn_first_subtitle and item['sidecar_subtitles']:
-                burn=item['sidecar_subtitles'][0]['file']
-            logs_dir=output_root/'logs'
+            burn = None
+            if args.burn_first_subtitle and item["sidecar_subtitles"]:
+                burn = item["sidecar_subtitles"][0]["file"]
+            logs_dir = output_root / "logs"
             logs_dir.mkdir(parents=True, exist_ok=True)
-            safe=item['file'].replace('/', '_')
-            progress_file=logs_dir/(safe + '.progress')
-            log_file=logs_dir/(safe + '.ffmpeg.log')
-            state_file=logs_dir/(safe + '.state.json')
-            selected_encoder = 'nvenc' if args.encoder == 'nvenc' or (args.encoder == 'auto' and nvidia_status().get('available')) else 'cpu'
+            safe = item["file"].replace("/", "_")
+            progress_file = logs_dir / (safe + ".progress")
+            log_file = logs_dir / (safe + ".ffmpeg.log")
+            state_file = logs_dir / (safe + ".state.json")
+            selected_encoder = (
+                "nvenc"
+                if args.encoder == "nvenc"
+                or (args.encoder == "auto" and nvidia_status().get("available"))
+                else "cpu"
+            )
             video_bitrate = args.video_bitrate
             audio_bitrate = args.audio_bitrate
             maxrate = args.maxrate
             bufsize = args.bufsize
             preset = DISC_PRESETS.get(args.disc_preset)
             if preset and not video_bitrate:
-                audio_bitrate = preset['audio_bitrate']
-                maxrate = preset['maxrate']
-                bufsize = preset['bufsize']
-                video_bitrate = preset_video_bitrate(args.disc_preset, total_duration, audio_bitrate)
-            out_path = output_root/item['recommended_output']
-            expected_options = expected_encode_options(args, selected_encoder, audio_bitrate, video_bitrate, maxrate, bufsize)
+                audio_bitrate = preset["audio_bitrate"]
+                maxrate = preset["maxrate"]
+                bufsize = preset["bufsize"]
+                video_bitrate = preset_video_bitrate(
+                    args.disc_preset, total_duration, audio_bitrate
+                )
+            out_path = output_root / item["recommended_output"]
+            expected_options = expected_encode_options(
+                args, selected_encoder, audio_bitrate, video_bitrate, maxrate, bufsize
+            )
             existing_ok, existing_reason = output_acceptable(out_path, item, args, expected_options)
             old_state = read_json(state_file) or {}
-            old_options = old_state.get('options') or {}
+            old_options = old_state.get("options") or {}
             options_match = all(old_options.get(k) == v for k, v in expected_options.items())
             # If we have a prior matching successful state, trust it. If state is
             # missing/older, still skip when the file probes as Blu-ray-compatible
             # and fits the current high-level target (notably BD-25 bitrate cap).
-            can_skip = existing_ok and not args.force_reencode and (
-                (old_state.get('status') == 'done' and options_match) or not old_state or old_state.get('status') in (None, 'done')
+            can_skip = (
+                existing_ok
+                and not args.force_reencode
+                and (
+                    (old_state.get("status") == "done" and options_match)
+                    or not old_state
+                    or old_state.get("status") in (None, "done")
+                )
             )
             if can_skip:
-                state={
-                    'file': item['file'], 'started_at': old_state.get('started_at'), 'finished_at': old_state.get('finished_at') or time.time(),
-                    'status': 'done', 'encoder': old_state.get('encoder') or selected_encoder, 'pid': None,
-                    'duration_seconds': item.get('duration_seconds'),
-                    'output': str(out_path), 'progress_file': str(progress_file), 'log_file': str(log_file),
-                    'smoke_seconds': args.smoke_seconds,
-                    'skipped_existing': True,
-                    'skip_reason': existing_reason,
-                    'options': expected_options,
+                state = {
+                    "file": item["file"],
+                    "started_at": old_state.get("started_at"),
+                    "finished_at": old_state.get("finished_at") or time.time(),
+                    "status": "done",
+                    "encoder": old_state.get("encoder") or selected_encoder,
+                    "pid": None,
+                    "duration_seconds": item.get("duration_seconds"),
+                    "output": str(out_path),
+                    "progress_file": str(progress_file),
+                    "log_file": str(log_file),
+                    "smoke_seconds": args.smoke_seconds,
+                    "skipped_existing": True,
+                    "skip_reason": existing_reason,
+                    "options": expected_options,
                 }
-                state_file.write_text(json.dumps(state, indent=2)+'\n')
-                print(f'= skip {item["file"]}: {existing_reason}', flush=True)
+                state_file.write_text(json.dumps(state, indent=2) + "\n")
+                print(f"= skip {item['file']}: {existing_reason}", flush=True)
                 continue
-            state={
-                'file': item['file'], 'started_at': time.time(), 'status': 'running', 'encoder': selected_encoder, 'pid': None,
-                'duration_seconds': item.get('duration_seconds'),
-                'output': str(out_path),
-                'progress_file': str(progress_file), 'log_file': str(log_file),
-                'smoke_seconds': args.smoke_seconds,
-                'options': expected_options,
+            state = {
+                "file": item["file"],
+                "started_at": time.time(),
+                "status": "running",
+                "encoder": selected_encoder,
+                "pid": None,
+                "duration_seconds": item.get("duration_seconds"),
+                "output": str(out_path),
+                "progress_file": str(progress_file),
+                "log_file": str(log_file),
+                "smoke_seconds": args.smoke_seconds,
+                "options": expected_options,
             }
-            state_file.write_text(json.dumps(state, indent=2)+'\n')
-            cmd=ffmpeg_cmd(project, item, output_root, args.smoke_seconds, burn, progress_file, selected_encoder, args.resolution, args.cq, args.crf, audio_bitrate, args.nvenc_preset, args.cpu_preset, video_bitrate, maxrate, bufsize)
-            print('+', ' '.join(shlex.quote(x) for x in cmd), flush=True)
+            state_file.write_text(json.dumps(state, indent=2) + "\n")
+            cmd = ffmpeg_cmd(
+                project,
+                item,
+                output_root,
+                args.smoke_seconds,
+                burn,
+                progress_file,
+                selected_encoder,
+                args.resolution,
+                args.cq,
+                args.crf,
+                audio_bitrate,
+                args.nvenc_preset,
+                args.cpu_preset,
+                video_bitrate,
+                maxrate,
+                bufsize,
+            )
+            print("+", " ".join(shlex.quote(x) for x in cmd), flush=True)
             try:
-                with log_file.open('ab') as log:
-                    proc=subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT)
-                    state['pid']=proc.pid
-                    state_file.write_text(json.dumps(state, indent=2)+'\n')
-                    returncode=proc.wait()
-                state['finished_at']=time.time()
-                state['returncode']=returncode
-                state['status']='done' if returncode == 0 else 'failed'
-                state_file.write_text(json.dumps(state, indent=2)+'\n')
+                with log_file.open("ab") as log:
+                    proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT)
+                    state["pid"] = proc.pid
+                    state_file.write_text(json.dumps(state, indent=2) + "\n")
+                    returncode = proc.wait()
+                state["finished_at"] = time.time()
+                state["returncode"] = returncode
+                state["status"] = "done" if returncode == 0 else "failed"
+                state_file.write_text(json.dumps(state, indent=2) + "\n")
                 if returncode != 0:
                     raise subprocess.CalledProcessError(returncode, cmd)
             finally:
@@ -368,5 +603,6 @@ def main():
                 pass
     print(json.dumps(manifest, indent=2))
 
-if __name__=='__main__':
+
+if __name__ == "__main__":
     main()

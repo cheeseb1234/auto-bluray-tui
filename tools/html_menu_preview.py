@@ -6,6 +6,7 @@ pptx_menu_converter.py and renders PowerPoint slide PNGs with clickable hitboxes
 keyboard/remote-style arrow navigation, action target inspection, and a live
 validation/info panel beside the slide.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -16,12 +17,15 @@ import webbrowser
 from pathlib import Path
 from typing import Any
 
-VIDEO_SUFFIXES = {'.mp4', '.mkv', '.m2ts', '.mov'}
+VIDEO_SUFFIXES = {".mp4", ".mkv", ".m2ts", ".mov"}
 
 
 def button_center(button: dict[str, Any]) -> tuple[float, float]:
-    r = button.get('hitbox_px') or button.get('rect_px') or {}
-    return (float(r.get('x', 0)) + float(r.get('w', 0)) / 2, float(r.get('y', 0)) + float(r.get('h', 0)) / 2)
+    r = button.get("hitbox_px") or button.get("rect_px") or {}
+    return (
+        float(r.get("x", 0)) + float(r.get("w", 0)) / 2,
+        float(r.get("y", 0)) + float(r.get("h", 0)) / 2,
+    )
 
 
 def row_order(buttons: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -31,7 +35,7 @@ def row_order(buttons: list[dict[str, Any]]) -> list[dict[str, Any]]:
         placed = False
         for row in rows:
             row_cy = sum(button_center(b)[1] for b in row) / len(row)
-            row_h = max((b.get('hitbox_px') or b.get('rect_px') or {}).get('h', 0) for b in row)
+            row_h = max((b.get("hitbox_px") or b.get("rect_px") or {}).get("h", 0) for b in row)
             if abs(cy - row_cy) <= max(40, row_h * 0.45):
                 row.append(btn)
                 placed = True
@@ -41,34 +45,40 @@ def row_order(buttons: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [btn for row in rows for btn in sorted(row, key=lambda b: button_center(b)[0])]
 
 
-def build_validation(model: dict[str, Any], project_dir: Path | None) -> tuple[list[str], dict[str, Any]]:
-    slides = {s['id']: s for s in model.get('slides', [])}
-    declared_videos = sorted(set(model.get('videos', {}).values()))
+def build_validation(
+    model: dict[str, Any], project_dir: Path | None
+) -> tuple[list[str], dict[str, Any]]:
+    slides = {s["id"]: s for s in model.get("slides", [])}
+    declared_videos = sorted(set(model.get("videos", {}).values()))
     reachable_videos: set[str] = set()
-    reachable_slides: set[str] = {'slide1'} if 'slide1' in slides else set()
-    lines = ['Menu validation', '---------------']
+    reachable_slides: set[str] = {"slide1"} if "slide1" in slides else set()
+    lines = ["Menu validation", "---------------"]
     warnings: list[str] = []
     errors = 0
 
-    for slide in model.get('slides', []):
+    for slide in model.get("slides", []):
         lines.append(f"{slide['id']}:")
-        buttons = row_order(slide.get('buttons', []))
+        buttons = row_order(slide.get("buttons", []))
         if not buttons:
-            lines.append(' (no buttons) ⚠️')
+            lines.append(" (no buttons) ⚠️")
         for btn in buttons:
-            label = btn.get('label') or btn.get('id') or '(unnamed)'
-            action = btn.get('action') or {}
-            kind = action.get('kind') or action.get('type') or 'unknown'
-            if kind == 'slide':
-                target = action.get('target') or action.get('menu_target')
+            label = btn.get("label") or btn.get("id") or "(unnamed)"
+            action = btn.get("action") or {}
+            kind = action.get("kind") or action.get("type") or "unknown"
+            if kind == "slide":
+                target = action.get("target") or action.get("menu_target")
                 ok = target in slides
                 if ok:
                     reachable_slides.add(target)
                 else:
                     errors += 1
-                lines.append(f" {label} -> {target or 'missing slide target'} {'✅' if ok else '❌'}")
-            elif kind == 'video':
-                target = action.get('target') or action.get('video_file') or action.get('video_target')
+                lines.append(
+                    f" {label} -> {target or 'missing slide target'} {'✅' if ok else '❌'}"
+                )
+            elif kind == "video":
+                target = (
+                    action.get("target") or action.get("video_file") or action.get("video_target")
+                )
                 exists = True
                 if project_dir and target:
                     exists = (project_dir / target).exists()
@@ -77,62 +87,75 @@ def build_validation(model: dict[str, Any], project_dir: Path | None) -> tuple[l
                     reachable_videos.add(target)
                 else:
                     errors += 1
-                suffix = '✅' if ok else '❌'
+                suffix = "✅" if ok else "❌"
                 if target and project_dir and not exists:
                     lines.append(f" {label} -> {target} {suffix} (missing file)")
                 else:
-                    chapter = f" @{action.get('start_timecode')}" if action.get('start_time_seconds') else ''
-                    lines.append(f" {label} -> {target or 'missing video target'}{chapter} {suffix}")
+                    chapter = (
+                        f" @{action.get('start_timecode')}"
+                        if action.get("start_time_seconds")
+                        else ""
+                    )
+                    lines.append(
+                        f" {label} -> {target or 'missing video target'}{chapter} {suffix}"
+                    )
             else:
                 errors += 1
                 warnings.append(f'Button "{label}" does not have a recognized action target.')
                 lines.append(f" {label} -> unknown action ❌")
-        lines.append('')
+        lines.append("")
 
     for slide_id in sorted(set(slides) - reachable_slides):
-        if slide_id != 'slide1':
-            warnings.append(f'Slide "{slide_id}" is not reachable from slide1 by detected menu buttons.')
+        if slide_id != "slide1":
+            warnings.append(
+                f'Slide "{slide_id}" is not reachable from slide1 by detected menu buttons.'
+            )
 
     for video in declared_videos:
         if video not in reachable_videos:
             warnings.append(f'Video "{video}" is not reachable from any menu.')
 
-    if model.get('match_warnings'):
-        for item in model['match_warnings']:
+    if model.get("match_warnings"):
+        for item in model["match_warnings"]:
             warnings.append(f"{item.get('slide', '?')}: {item.get('message', 'match warning')}")
 
-    lines.append('Warnings:')
+    lines.append("Warnings:")
     if warnings:
-        lines.extend(f' {w}' for w in warnings)
+        lines.extend(f" {w}" for w in warnings)
     else:
-        lines.append(' None ✅')
+        lines.append(" None ✅")
 
-    summary = {'errors': errors, 'warnings': len(warnings), 'reachable_videos': sorted(reachable_videos), 'reachable_slides': sorted(reachable_slides)}
+    summary = {
+        "errors": errors,
+        "warnings": len(warnings),
+        "reachable_videos": sorted(reachable_videos),
+        "reachable_slides": sorted(reachable_slides),
+    }
     return lines, summary
 
 
 def make_preview(model_path: Path, output: Path, project_dir: Path | None) -> None:
-    model = json.loads(model_path.read_text(encoding='utf-8'))
+    model = json.loads(model_path.read_text(encoding="utf-8"))
     base = model_path.parent
     validation_lines, validation_summary = build_validation(model, project_dir)
-    asset_root = Path('.')
+    asset_root = Path(".")
     try:
         asset_root = Path(base.relative_to(output.parent))
     except ValueError:
         asset_root = Path(os.path.relpath(base, output.parent))
 
-    for slide in model.get('slides', []):
-        slide['preview_order'] = [b.get('id') for b in row_order(slide.get('buttons', []))]
+    for slide in model.get("slides", []):
+        slide["preview_order"] = [b.get("id") for b in row_order(slide.get("buttons", []))]
 
     payload = {
-        'model': model,
-        'validationText': '\n'.join(validation_lines),
-        'validationSummary': validation_summary,
-        'baseNote': f'Preview generated from {model_path}',
-        'assetRoot': asset_root.as_posix(),
+        "model": model,
+        "validationText": "\n".join(validation_lines),
+        "validationSummary": validation_summary,
+        "baseNote": f"Preview generated from {model_path}",
+        "assetRoot": asset_root.as_posix(),
     }
     json_payload = json.dumps(payload, ensure_ascii=False)
-    safe_json_payload = json_payload.replace('</', '<\\/')
+    safe_json_payload = json_payload.replace("</", "<\\/")
     title = html.escape(f"Blu-ray menu preview - {Path(model.get('source', 'menu.pptx')).name}")
 
     html_doc = f"""<!doctype html>
@@ -293,22 +316,41 @@ render();
 </body>
 </html>
 """
-    output.write_text(html_doc, encoding='utf-8')
+    output.write_text(html_doc, encoding="utf-8")
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description='Generate a local HTML preview for a PPTX Blu-ray menu model.')
-    ap.add_argument('menu_model', type=Path, help='Path to generated menu-model.json')
-    ap.add_argument('-o', '--output', type=Path, help='Output preview HTML path; defaults next to menu-model.json')
-    ap.add_argument('--project-dir', type=Path, help='Original Blu-ray project directory for video existence checks')
-    ap.add_argument('--no-open', action='store_true', help='Create the preview without launching it in the default browser')
+    ap = argparse.ArgumentParser(
+        description="Generate a local HTML preview for a PPTX Blu-ray menu model."
+    )
+    ap.add_argument("menu_model", type=Path, help="Path to generated menu-model.json")
+    ap.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        help="Output preview HTML path; defaults next to menu-model.json",
+    )
+    ap.add_argument(
+        "--project-dir",
+        type=Path,
+        help="Original Blu-ray project directory for video existence checks",
+    )
+    ap.add_argument(
+        "--no-open",
+        action="store_true",
+        help="Create the preview without launching it in the default browser",
+    )
     args = ap.parse_args()
-    out = args.output or (args.menu_model.parent / 'menu-preview.html')
-    make_preview(args.menu_model.resolve(), out.resolve(), args.project_dir.resolve() if args.project_dir else None)
+    out = args.output or (args.menu_model.parent / "menu-preview.html")
+    make_preview(
+        args.menu_model.resolve(),
+        out.resolve(),
+        args.project_dir.resolve() if args.project_dir else None,
+    )
     print(out.resolve())
     if not args.no_open:
         webbrowser.open(out.resolve().as_uri())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

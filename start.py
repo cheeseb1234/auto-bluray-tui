@@ -5,6 +5,7 @@ This replaces scripts/monitor-bluray-project.sh as the project entry point.
 It intentionally avoids shell-specific behavior so it can run on Windows,
 macOS, and Linux.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -74,7 +75,9 @@ def check_python() -> None:
     if sys.version_info < MIN_PYTHON:
         wanted = ".".join(str(part) for part in MIN_PYTHON)
         found = platform.python_version()
-        raise LauncherError(f"Python {wanted}+ is required; found Python {found} at {sys.executable}")
+        raise LauncherError(
+            f"Python {wanted}+ is required; found Python {found} at {sys.executable}"
+        )
 
 
 def _dependency_checks():
@@ -136,7 +139,9 @@ def ensure_project_layout(project_dir: Path) -> None:
         (project_dir / "build" / "bluray-workflow").mkdir(parents=True, exist_ok=True)
         (project_dir / "build" / "bluray-media").mkdir(parents=True, exist_ok=True)
     except OSError as exc:
-        raise LauncherError(f"Could not create project directories under {project_dir}: {exc}") from exc
+        raise LauncherError(
+            f"Could not create project directories under {project_dir}: {exc}"
+        ) from exc
     if not project_dir.is_dir():
         raise LauncherError(f"Project path is not a directory: {project_dir}")
 
